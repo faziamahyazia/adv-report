@@ -3,9 +3,11 @@ import { usePage } from "@inertiajs/vue3";
 import { computed } from "vue";
 
 const data = computed(() => usePage().props.data ?? {});
+const activityTypes = computed(() => data.value.activity_types ?? []);
 const rows = computed(() => data.value.rows ?? []);
 const columns = computed(() => data.value.columns ?? []);
 const columnTotals = computed(() => data.value.column_totals ?? []);
+const colTypeTotals = computed(() => data.value.col_type_totals ?? []);
 const grandTotal = computed(() => data.value.grand_total ?? 0);
 const periodLabel = computed(() => data.value.period_label ?? "");
 </script>
@@ -22,29 +24,55 @@ const periodLabel = computed(() => data.value.period_label ?? "");
     <div v-else class="table-wrapper">
       <table class="agro-table">
         <thead>
+          <!-- Row 1: period headers (span over all type sub-columns + total) -->
           <tr>
-            <th class="col-name">Nama BS</th>
-            <th v-for="col in columns" :key="col">{{ col }}</th>
-            <th>Total</th>
+            <th class="col-name" rowspan="2">Nama BS</th>
+            <th
+              v-for="col in columns"
+              :key="col"
+              :colspan="activityTypes.length + 1"
+            >
+              {{ col }}
+            </th>
+            <th rowspan="2">Total</th>
+          </tr>
+          <!-- Row 2: activity type sub-headers per period -->
+          <tr>
+            <template v-for="col in columns" :key="col">
+              <th v-for="t in activityTypes" :key="t.id">{{ t.name }}</th>
+              <th>Jml</th>
+            </template>
           </tr>
         </thead>
         <tbody>
           <tr v-for="row in rows" :key="row.name">
             <td class="col-name">{{ row.name }}</td>
-            <td v-for="(count, i) in row.counts" :key="i" class="text-center">
-              <span :class="count > 0 ? 'text-primary text-bold' : 'text-grey-5'">
-                {{ count }}
-              </span>
-            </td>
+            <template v-for="(period, i) in row.data" :key="i">
+              <td v-for="t in activityTypes" :key="t.id" class="text-center">
+                <span
+                  :class="
+                    (period.type_counts[t.id] ?? 0) > 0
+                      ? 'text-primary text-bold'
+                      : 'text-grey-5'
+                  "
+                >
+                  {{ period.type_counts[t.id] ?? 0 }}
+                </span>
+              </td>
+              <td class="text-center text-bold">{{ period.total }}</td>
+            </template>
             <td class="text-center text-bold">{{ row.total }}</td>
           </tr>
         </tbody>
         <tfoot>
           <tr class="footer-row">
             <td class="col-name text-bold">Total</td>
-            <td v-for="(t, i) in columnTotals" :key="i" class="text-center text-bold">
-              {{ t }}
-            </td>
+            <template v-for="(typeTotals, i) in colTypeTotals" :key="i">
+              <td v-for="t in activityTypes" :key="t.id" class="text-center text-bold">
+                {{ typeTotals[t.id] ?? 0 }}
+              </td>
+              <td class="text-center text-bold">{{ columnTotals[i] }}</td>
+            </template>
             <td class="text-center text-bold">{{ grandTotal }}</td>
           </tr>
         </tfoot>

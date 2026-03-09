@@ -15,12 +15,14 @@ const query = getQueryParams();
 const currentYear = current_year();
 const currentMonth = current_month();
 const currentQuarter = current_quarter();
+// Fiscal year starts in April; Jan-Mar belong to previous fiscal year
+const currentFiscalYear = currentMonth <= 3 ? currentYear - 1 : currentYear;
 const userRole = usePage().props.auth.user.role;
 const title = "Dashboard";
 const showFilter = ref(true);
 
 const filter = reactive({
-  year: Number(query.year ?? currentYear),
+  year: Number(query.year ?? currentFiscalYear),
   month: Number(query.month ?? currentMonth),
   view_type: query.view_type ?? "month",
   quarter: Number(query.quarter ?? currentQuarter),

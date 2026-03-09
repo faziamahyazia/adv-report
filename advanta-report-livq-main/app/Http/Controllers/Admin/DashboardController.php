@@ -173,8 +173,13 @@ class DashboardController extends Controller
             ->get(['id', 'name']);
         $bsUserIds = $bsUsers->pluck('id')->toArray();
 
+        $activityTypes = ActivityType::where('active', true)->orderBy('name')->get(['id', 'name']);
+        $typeIds = $activityTypes->pluck('id')->toArray();
+
         if ($viewType === 'month') {
-            $startOfMonth = Carbon::createFromDate($year, $month, 1)->startOfDay();
+            // Fiscal year fix: Jan-Mar belong to fiscal_year+1 as calendar year
+            $calYear = in_array($month, [1, 2, 3]) ? $year + 1 : $year;
+            $startOfMonth = Carbon::createFromDate($calYear, $month, 1)->startOfDay();
             $endOfMonth   = $startOfMonth->copy()->endOfMonth();
             $daysInMonth  = $startOfMonth->daysInMonth;
 
@@ -190,29 +195,38 @@ class DashboardController extends Controller
 
             $activities = Activity::whereIn('user_id', $bsUserIds)
                 ->whereBetween('date', [$startOfMonth, $endOfMonth])
-                ->get(['user_id', 'date']);
+                ->get(['user_id', 'date', 'type_id']);
 
-            $columns      = array_column($weeks, 'label');
-            $columnTotals = array_fill(0, count($weeks), 0);
-            $grandTotal   = 0;
-            $rows         = [];
+            $columns       = array_column($weeks, 'label');
+            $colTypeTotals = array_fill(0, count($weeks), array_fill_keys($typeIds, 0));
+            $columnTotals  = array_fill(0, count($weeks), 0);
+            $grandTotal    = 0;
+            $rows          = [];
 
             foreach ($bsUsers as $bs) {
                 $userActs = $activities->where('user_id', $bs->id);
-                $counts   = [];
+                $data     = [];
                 $rowTotal = 0;
 
                 foreach ($weeks as $i => $week) {
-                    $count = $userActs->filter(fn($a) =>
+                    $weekActs = $userActs->filter(fn($a) =>
                         Carbon::parse($a->date)->day >= $week['start'] &&
                         Carbon::parse($a->date)->day <= $week['end']
-                    )->count();
-                    $counts[] = $count;
-                    $columnTotals[$i] += $count;
-                    $rowTotal += $count;
+                    );
+
+                    $typeCounts = [];
+                    foreach ($typeIds as $tid) {
+                        $count = $weekActs->where('type_id', $tid)->count();
+                        $typeCounts[$tid] = $count;
+                        $colTypeTotals[$i][$tid] += $count;
+                    }
+                    $weekTotal = $weekActs->count();
+                    $data[] = ['type_counts' => $typeCounts, 'total' => $weekTotal];
+                    $columnTotals[$i] += $weekTotal;
+                    $rowTotal += $weekTotal;
                 }
 
-                $rows[] = ['name' => $bs->name, 'counts' => $counts, 'total' => $rowTotal];
+                $rows[] = ['name' => $bs->name, 'data' => $data, 'total' => $rowTotal];
                 $grandTotal += $rowTotal;
             }
 
@@ -226,29 +240,38 @@ class DashboardController extends Controller
 
             $activities = Activity::whereIn('user_id', $bsUserIds)
                 ->whereBetween('date', [$start, $end])
-                ->get(['user_id', 'date']);
+                ->get(['user_id', 'date', 'type_id']);
 
-            $columns      = array_map(fn($m) => Carbon::createFromDate($qYear, $m, 1)->translatedFormat('M Y'), $qMonths);
-            $columnTotals = [0, 0, 0];
-            $grandTotal   = 0;
-            $rows         = [];
+            $columns       = array_map(fn($m) => Carbon::createFromDate($qYear, $m, 1)->translatedFormat('M Y'), $qMonths);
+            $colTypeTotals = array_fill(0, 3, array_fill_keys($typeIds, 0));
+            $columnTotals  = [0, 0, 0];
+            $grandTotal    = 0;
+            $rows          = [];
 
             foreach ($bsUsers as $bs) {
                 $userActs = $activities->where('user_id', $bs->id);
-                $counts   = [];
+                $data     = [];
                 $rowTotal = 0;
 
                 foreach ($qMonths as $i => $m) {
-                    $count = $userActs->filter(function ($a) use ($m, $qYear) {
+                    $monthActs = $userActs->filter(function ($a) use ($m, $qYear) {
                         $d = Carbon::parse($a->date);
                         return $d->month === $m && $d->year === $qYear;
-                    })->count();
-                    $counts[] = $count;
-                    $columnTotals[$i] += $count;
-                    $rowTotal += $count;
+                    });
+
+                    $typeCounts = [];
+                    foreach ($typeIds as $tid) {
+                        $count = $monthActs->where('type_id', $tid)->count();
+                        $typeCounts[$tid] = $count;
+                        $colTypeTotals[$i][$tid] += $count;
+                    }
+                    $monthTotal = $monthActs->count();
+                    $data[] = ['type_counts' => $typeCounts, 'total' => $monthTotal];
+                    $columnTotals[$i] += $monthTotal;
+                    $rowTotal += $monthTotal;
                 }
 
-                $rows[] = ['name' => $bs->name, 'counts' => $counts, 'total' => $rowTotal];
+                $rows[] = ['name' => $bs->name, 'data' => $data, 'total' => $rowTotal];
                 $grandTotal += $rowTotal;
             }
 
@@ -261,7 +284,7 @@ class DashboardController extends Controller
 
             $activities = Activity::whereIn('user_id', $bsUserIds)
                 ->whereBetween('date', [$start, $end])
-                ->get(['user_id', 'date']);
+                ->get(['user_id', 'date', 'type_id']);
 
             $quarterRanges = [
                 ['months' => [4, 5, 6],    'year' => $year,     'label' => 'Q1 (Apr-Jun)'],
@@ -270,27 +293,36 @@ class DashboardController extends Controller
                 ['months' => [1, 2, 3],    'year' => $year + 1, 'label' => 'Q4 (Jan-Mar)'],
             ];
 
-            $columns      = array_column($quarterRanges, 'label');
-            $columnTotals = [0, 0, 0, 0];
-            $grandTotal   = 0;
-            $rows         = [];
+            $columns       = array_column($quarterRanges, 'label');
+            $colTypeTotals = array_fill(0, 4, array_fill_keys($typeIds, 0));
+            $columnTotals  = [0, 0, 0, 0];
+            $grandTotal    = 0;
+            $rows          = [];
 
             foreach ($bsUsers as $bs) {
                 $userActs = $activities->where('user_id', $bs->id);
-                $counts   = [];
+                $data     = [];
                 $rowTotal = 0;
 
                 foreach ($quarterRanges as $i => $qr) {
-                    $count = $userActs->filter(function ($a) use ($qr) {
+                    $qActs = $userActs->filter(function ($a) use ($qr) {
                         $d = Carbon::parse($a->date);
                         return in_array($d->month, $qr['months']) && $d->year === $qr['year'];
-                    })->count();
-                    $counts[] = $count;
-                    $columnTotals[$i] += $count;
-                    $rowTotal += $count;
+                    });
+
+                    $typeCounts = [];
+                    foreach ($typeIds as $tid) {
+                        $count = $qActs->where('type_id', $tid)->count();
+                        $typeCounts[$tid] = $count;
+                        $colTypeTotals[$i][$tid] += $count;
+                    }
+                    $qTotal = $qActs->count();
+                    $data[] = ['type_counts' => $typeCounts, 'total' => $qTotal];
+                    $columnTotals[$i] += $qTotal;
+                    $rowTotal += $qTotal;
                 }
 
-                $rows[] = ['name' => $bs->name, 'counts' => $counts, 'total' => $rowTotal];
+                $rows[] = ['name' => $bs->name, 'data' => $data, 'total' => $rowTotal];
                 $grandTotal += $rowTotal;
             }
 
@@ -299,12 +331,14 @@ class DashboardController extends Controller
 
         return inertia('admin/dashboard/Index', [
             'data' => [
-                'view_type'     => $viewType,
-                'period_label'  => $periodLabel,
-                'columns'       => $columns,
-                'rows'          => $rows,
-                'column_totals' => $columnTotals,
-                'grand_total'   => $grandTotal,
+                'view_type'       => $viewType,
+                'period_label'    => $periodLabel,
+                'activity_types'  => $activityTypes->map(fn($t) => ['id' => $t->id, 'name' => $t->name])->values(),
+                'columns'         => $columns,
+                'rows'            => $rows,
+                'col_type_totals' => array_values($colTypeTotals),
+                'column_totals'   => $columnTotals,
+                'grand_total'     => $grandTotal,
             ],
         ]);
     }
