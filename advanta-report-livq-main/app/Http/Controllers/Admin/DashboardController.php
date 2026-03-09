@@ -183,6 +183,7 @@ class DashboardController extends Controller
             $endOfMonth   = $startOfMonth->copy()->endOfMonth();
 
             $activities = Activity::whereIn('user_id', $bsUserIds)
+                ->where('status', Activity::Status_Approved)
                 ->whereBetween('date', [$startOfMonth, $endOfMonth])
                 ->get(['user_id', 'date', 'type_id']);
 
@@ -216,6 +217,7 @@ class DashboardController extends Controller
             $end     = Carbon::createFromDate($qYear, $qMonths[2], 1)->endOfMonth()->endOfDay();
 
             $activities = Activity::whereIn('user_id', $bsUserIds)
+                ->where('status', Activity::Status_Approved)
                 ->whereBetween('date', [$start, $end])
                 ->get(['user_id', 'date', 'type_id']);
 
@@ -260,6 +262,7 @@ class DashboardController extends Controller
             $end   = Carbon::createFromDate($year + 1, 3, 31)->endOfDay();
 
             $activities = Activity::whereIn('user_id', $bsUserIds)
+                ->where('status', Activity::Status_Approved)
                 ->whereBetween('date', [$start, $end])
                 ->get(['user_id', 'date', 'type_id']);
 
