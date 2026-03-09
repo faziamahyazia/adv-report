@@ -154,8 +154,10 @@ class DashboardController extends Controller
     private function agronomistDashboard(Request $request)
     {
         $user = auth()->user();
-        $year     = (int) $request->get('year', now()->year);
-        $month    = (int) $request->get('month', now()->month);
+        $nowMonth    = now()->month;
+        $defaultYear = in_array($nowMonth, [1, 2, 3]) ? now()->year - 1 : now()->year;
+        $year     = (int) $request->get('year', $defaultYear);
+        $month    = (int) $request->get('month', $nowMonth);
         $viewType = $request->get('view_type', 'month');
         $quarter  = (int) $request->get('quarter', $this->getQuarterFromMonth($month));
 
