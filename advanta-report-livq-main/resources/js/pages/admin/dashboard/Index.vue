@@ -1,12 +1,7 @@
 <script setup>
-import CurrentStatCards from "./cards/CurrentStatCards.vue";
-import StatCards from "./cards/StatCards.vue";
-import ChartCard from "./cards/ChartCard.vue";
-import RecentInteractionsCard from "./cards/RecentInteractionsCard.vue";
-import RecentClosingsCard from "./cards/RecentClosingsCard.vue";
-import RecentCustomersCard from "./cards/RecentCustomersCard.vue";
+import BsTargetCard from "./cards/BsTargetCard.vue";
+import AgronomistDashboardCard from "./cards/AgronomistDashboardCard.vue";
 import { router, usePage } from "@inertiajs/vue3";
-
 import { reactive, ref } from "vue";
 import {
   create_month_options,
@@ -15,17 +10,20 @@ import {
   current_year,
   getQueryParams,
 } from "@/helpers/utils";
-import BsTargetCard from "./cards/BsTargetCard.vue";
-import { usePageStorage } from "@/helpers/usePageStorage";
 
 const query = getQueryParams();
 const currentYear = current_year();
 const currentMonth = current_month();
+const currentQuarter = current_quarter();
+const userRole = usePage().props.auth.user.role;
 const title = "Dashboard";
 const showFilter = ref(true);
+
 const filter = reactive({
   year: Number(query.year ?? currentYear),
   month: Number(query.month ?? currentMonth),
+  view_type: query.view_type ?? "month",
+  quarter: Number(query.quarter ?? currentQuarter),
 });
 
 const years = [
@@ -36,6 +34,19 @@ const years = [
 ];
 
 const months = create_month_options();
+
+const quarterOptions = [
+  { value: 1, label: "Q1 (Apr-Jun)" },
+  { value: 2, label: "Q2 (Jul-Sep)" },
+  { value: 3, label: "Q3 (Okt-Des)" },
+  { value: 4, label: "Q4 (Jan-Mar)" },
+];
+
+const viewTypeOptions = [
+  { value: "month", label: "Per Bulan" },
+  { value: "quarter", label: "Per Kwartal" },
+  { value: "fiscal_year", label: "Tahun Fiskal" },
+];
 
 const onFilterChange = () => {
   router.visit(route("admin.dashboard", filter));
@@ -55,11 +66,30 @@ const onFilterChange = () => {
         @click="showFilter = !showFilter"
       />
     </template>
+
     <template #header v-if="showFilter">
       <q-toolbar class="filter-bar">
         <div class="row q-col-gutter-xs items-center q-pa-sm full-width">
+
+          <!-- Tab view type — agronomist only -->
+          <div v-if="userRole === 'agronomist'" class="col-12 q-pb-xs">
+            <q-btn-toggle
+              v-model="filter.view_type"
+              :options="viewTypeOptions"
+              size="sm"
+              dense
+              toggle-color="primary"
+              color="white"
+              text-color="grey-8"
+              unelevated
+              spread
+              @update:model-value="onFilterChange"
+            />
+          </div>
+
+          <!-- Tahun -->
           <q-select
-            class="custom-select col-xs-6 col-sm-6"
+            class="custom-select col-xs-6 col-sm-4"
             style="min-width: 120px"
             v-model="filter.year"
             :options="years"
@@ -70,8 +100,11 @@ const onFilterChange = () => {
             outlined
             @update:model-value="onFilterChange"
           />
+
+          <!-- Bulan — BS selalu tampil, agronomist hanya mode 'month' -->
           <q-select
-            class="custom-select col-xs-6 col-sm-6"
+            v-if="userRole === 'bs' || (userRole === 'agronomist' && filter.view_type === 'month')"
+            class="custom-select col-xs-6 col-sm-4"
             style="min-width: 120px"
             v-model="filter.month"
             :options="months"
@@ -82,32 +115,48 @@ const onFilterChange = () => {
             outlined
             @update:model-value="onFilterChange"
           />
+
+          <!-- Kwartal — agronomist mode 'quarter' -->
+          <q-select
+            v-if="userRole === 'agronomist' && filter.view_type === 'quarter'"
+            class="custom-select col-xs-6 col-sm-4"
+            style="min-width: 120px"
+            v-model="filter.quarter"
+            :options="quarterOptions"
+            label="Kwartal"
+            dense
+            emit-value
+            map-options
+            outlined
+            @update:model-value="onFilterChange"
+          />
         </div>
       </q-toolbar>
     </template>
-    <div class="q-pa-sm" v-if="$page.props.auth.user.role === 'bs'">
+
+    <!-- BS Dashboard -->
+    <div class="q-pa-sm" v-if="userRole === 'bs'">
       <BsTargetCard />
     </div>
-    <div class="q-pa-sm" v-if="$page.props.auth.user.role === 'admin'">
+
+    <!-- Agronomist Dashboard -->
+    <div class="q-pa-sm" v-if="userRole === 'agronomist'">
+      <div class="text-subtitle1 text-bold text-grey-8 q-mb-sm">
+        Rekap Kegiatan BS
+      </div>
+      <AgronomistDashboardCard />
+    </div>
+
+    <!-- Admin Dashboard -->
+    <div class="q-pa-sm" v-if="userRole === 'admin'">
       <div>
         <div class="text-subtitle1 text-bold text-grey-8">Statistik Aktual</div>
         <p class="text-grey-8">Belum Tersedia</p>
-        <!-- <current-stat-cards class="q-py-none" /> -->
-        <div class="row q-col-gutter-sm q-pt-sm">
-          <!-- <recent-interactions-card class="q-my-xs" />
-          <recent-customers-card class="q-my-xs" />
-          <recent-closings-card class="q-my-xs" /> -->
-        </div>
+        <div class="row q-col-gutter-sm q-pt-sm"></div>
       </div>
       <div class="q-pt-md">
-        <div class="text-subtitle1 text-bold text-grey-8">
-          Statistik Keseluruhan
-        </div>
+        <div class="text-subtitle1 text-bold text-grey-8">Statistik Keseluruhan</div>
         <p class="text-grey-8">Belum Tersedia</p>
-        <!-- <stat-cards class="q-py-none" /> -->
-      </div>
-      <div>
-        <!-- <chart-card class="q-py-none q-pt-lg" /> -->
       </div>
     </div>
   </authenticated-layout>

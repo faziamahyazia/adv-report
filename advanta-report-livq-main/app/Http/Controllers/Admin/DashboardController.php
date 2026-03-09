@@ -135,6 +135,11 @@ class DashboardController extends Controller
             return $this->bsDashboard($request);
         }
 
+        // Agronomist dashboard
+        if ($request->user()->role === User::Role_Agronomist) {
+            return $this->agronomistDashboard($request);
+        }
+
         // For other roles, show the default dashboard
         return inertia('admin/dashboard/Index', [
             'data' => [],
@@ -144,6 +149,172 @@ class DashboardController extends Controller
                 'end_date' => '',
             ],
         ]);
+    }
+
+    private function agronomistDashboard(Request $request)
+    {
+        $user = auth()->user();
+        $year     = (int) $request->get('year', now()->year);
+        $month    = (int) $request->get('month', now()->month);
+        $viewType = $request->get('view_type', 'month');
+        $quarter  = (int) $request->get('quarter', $this->getQuarterFromMonth($month));
+
+        $fiscalQuarterMonths = [
+            1 => [4, 5, 6],
+            2 => [7, 8, 9],
+            3 => [10, 11, 12],
+            4 => [1, 2, 3],
+        ];
+
+        $bsUsers = User::where('parent_id', $user->id)
+            ->where('role', User::Role_BS)
+            ->where('active', true)
+            ->orderBy('name')
+            ->get(['id', 'name']);
+        $bsUserIds = $bsUsers->pluck('id')->toArray();
+
+        if ($viewType === 'month') {
+            $startOfMonth = Carbon::createFromDate($year, $month, 1)->startOfDay();
+            $endOfMonth   = $startOfMonth->copy()->endOfMonth();
+            $daysInMonth  = $startOfMonth->daysInMonth;
+
+            $weeks = [
+                ['label' => 'W1', 'start' => 1,  'end' => 7],
+                ['label' => 'W2', 'start' => 8,  'end' => 14],
+                ['label' => 'W3', 'start' => 15, 'end' => 21],
+                ['label' => 'W4', 'start' => 22, 'end' => min(28, $daysInMonth)],
+            ];
+            if ($daysInMonth > 28) {
+                $weeks[] = ['label' => 'W5', 'start' => 29, 'end' => $daysInMonth];
+            }
+
+            $activities = Activity::whereIn('user_id', $bsUserIds)
+                ->whereBetween('date', [$startOfMonth, $endOfMonth])
+                ->get(['user_id', 'date']);
+
+            $columns      = array_column($weeks, 'label');
+            $columnTotals = array_fill(0, count($weeks), 0);
+            $grandTotal   = 0;
+            $rows         = [];
+
+            foreach ($bsUsers as $bs) {
+                $userActs = $activities->where('user_id', $bs->id);
+                $counts   = [];
+                $rowTotal = 0;
+
+                foreach ($weeks as $i => $week) {
+                    $count = $userActs->filter(fn($a) =>
+                        Carbon::parse($a->date)->day >= $week['start'] &&
+                        Carbon::parse($a->date)->day <= $week['end']
+                    )->count();
+                    $counts[] = $count;
+                    $columnTotals[$i] += $count;
+                    $rowTotal += $count;
+                }
+
+                $rows[] = ['name' => $bs->name, 'counts' => $counts, 'total' => $rowTotal];
+                $grandTotal += $rowTotal;
+            }
+
+            $periodLabel = $startOfMonth->translatedFormat('F Y');
+
+        } elseif ($viewType === 'quarter') {
+            $qMonths = $fiscalQuarterMonths[$quarter];
+            $qYear   = ($quarter === 4) ? $year + 1 : $year;
+            $start   = Carbon::createFromDate($qYear, $qMonths[0], 1)->startOfDay();
+            $end     = Carbon::createFromDate($qYear, $qMonths[2], 1)->endOfMonth()->endOfDay();
+
+            $activities = Activity::whereIn('user_id', $bsUserIds)
+                ->whereBetween('date', [$start, $end])
+                ->get(['user_id', 'date']);
+
+            $columns      = array_map(fn($m) => Carbon::createFromDate($qYear, $m, 1)->translatedFormat('M Y'), $qMonths);
+            $columnTotals = [0, 0, 0];
+            $grandTotal   = 0;
+            $rows         = [];
+
+            foreach ($bsUsers as $bs) {
+                $userActs = $activities->where('user_id', $bs->id);
+                $counts   = [];
+                $rowTotal = 0;
+
+                foreach ($qMonths as $i => $m) {
+                    $count = $userActs->filter(function ($a) use ($m, $qYear) {
+                        $d = Carbon::parse($a->date);
+                        return $d->month === $m && $d->year === $qYear;
+                    })->count();
+                    $counts[] = $count;
+                    $columnTotals[$i] += $count;
+                    $rowTotal += $count;
+                }
+
+                $rows[] = ['name' => $bs->name, 'counts' => $counts, 'total' => $rowTotal];
+                $grandTotal += $rowTotal;
+            }
+
+            $quarterLabels = [1 => 'Q1', 2 => 'Q2', 3 => 'Q3', 4 => 'Q4'];
+            $periodLabel   = "Kwartal {$quarter} ({$quarterLabels[$quarter]}) — Tahun Fiskal {$year}/" . ($year + 1);
+
+        } else { // fiscal_year
+            $start = Carbon::createFromDate($year, 4, 1)->startOfDay();
+            $end   = Carbon::createFromDate($year + 1, 3, 31)->endOfDay();
+
+            $activities = Activity::whereIn('user_id', $bsUserIds)
+                ->whereBetween('date', [$start, $end])
+                ->get(['user_id', 'date']);
+
+            $quarterRanges = [
+                ['months' => [4, 5, 6],    'year' => $year,     'label' => 'Q1 (Apr-Jun)'],
+                ['months' => [7, 8, 9],    'year' => $year,     'label' => 'Q2 (Jul-Sep)'],
+                ['months' => [10, 11, 12], 'year' => $year,     'label' => 'Q3 (Okt-Des)'],
+                ['months' => [1, 2, 3],    'year' => $year + 1, 'label' => 'Q4 (Jan-Mar)'],
+            ];
+
+            $columns      = array_column($quarterRanges, 'label');
+            $columnTotals = [0, 0, 0, 0];
+            $grandTotal   = 0;
+            $rows         = [];
+
+            foreach ($bsUsers as $bs) {
+                $userActs = $activities->where('user_id', $bs->id);
+                $counts   = [];
+                $rowTotal = 0;
+
+                foreach ($quarterRanges as $i => $qr) {
+                    $count = $userActs->filter(function ($a) use ($qr) {
+                        $d = Carbon::parse($a->date);
+                        return in_array($d->month, $qr['months']) && $d->year === $qr['year'];
+                    })->count();
+                    $counts[] = $count;
+                    $columnTotals[$i] += $count;
+                    $rowTotal += $count;
+                }
+
+                $rows[] = ['name' => $bs->name, 'counts' => $counts, 'total' => $rowTotal];
+                $grandTotal += $rowTotal;
+            }
+
+            $periodLabel = "Tahun Fiskal {$year}/" . ($year + 1);
+        }
+
+        return inertia('admin/dashboard/Index', [
+            'data' => [
+                'view_type'     => $viewType,
+                'period_label'  => $periodLabel,
+                'columns'       => $columns,
+                'rows'          => $rows,
+                'column_totals' => $columnTotals,
+                'grand_total'   => $grandTotal,
+            ],
+        ]);
+    }
+
+    private function getQuarterFromMonth(int $month): int
+    {
+        if (in_array($month, [4, 5, 6]))   return 1;
+        if (in_array($month, [7, 8, 9]))   return 2;
+        if (in_array($month, [10, 11, 12])) return 3;
+        return 4;
     }
 
     /// TIDAK DIGUNAKAN
