@@ -148,6 +148,10 @@ class UserController extends Controller
         }
 
         DB::transaction(function () use ($user) {
+            // Null-kan referensi user sebagai responden (approve/reject) di plan & aktivitas milik orang lain
+            ActivityPlan::where('responded_by_id', $user->id)->update(['responded_by_id' => null]);
+            Activity::where('responded_by_id', $user->id)->update(['responded_by_id' => null]);
+
             // Hapus kunjungan demo plot milik user ini
             DemoPlotVisit::where('user_id', $user->id)->delete();
 
