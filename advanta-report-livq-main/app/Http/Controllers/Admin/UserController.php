@@ -3,11 +3,17 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Activity;
+use App\Models\ActivityPlan;
+use App\Models\ActivityTarget;
+use App\Models\DemoPlot;
+use App\Models\DemoPlotVisit;
 use App\Models\User;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -141,16 +147,31 @@ class UserController extends Controller
             ], 409);
         }
 
-        try {
+        DB::transaction(function () use ($user) {
+            // Hapus kunjungan demo plot milik user ini
+            DemoPlotVisit::where('user_id', $user->id)->delete();
+
+            // Hapus kunjungan pada demo plot yang dimiliki user ini (oleh user lain)
+            $plotIds = DemoPlot::where('user_id', $user->id)->pluck('id');
+            DemoPlotVisit::whereIn('demo_plot_id', $plotIds)->delete();
+
+            // Hapus demo plot milik user ini
+            DemoPlot::where('user_id', $user->id)->delete();
+
+            // Hapus rencana kegiatan (detail ikut cascade)
+            ActivityPlan::where('user_id', $user->id)->delete();
+
+            // Hapus target kegiatan (detail ikut cascade)
+            ActivityTarget::where('user_id', $user->id)->delete();
+
+            // Hapus realisasi kegiatan
+            Activity::where('user_id', $user->id)->delete();
+
             $user->delete();
-        } catch (\Illuminate\Database\QueryException $e) {
-            return response()->json([
-                'message' => 'Tidak dapat menghapus pengguna ini karena masih memiliki data terkait (aktivitas, rencana kegiatan, demo plot, dll). Hapus data terkait terlebih dahulu.'
-            ], 409);
-        }
+        });
 
         return response()->json([
-            'message' => "Pengguna {$user->username} telah dihapus!"
+            'message' => "Pengguna {$user->username} beserta seluruh data terkait telah dihapus!"
         ]);
     }
 
