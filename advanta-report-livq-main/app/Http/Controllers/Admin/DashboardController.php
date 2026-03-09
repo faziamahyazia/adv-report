@@ -181,53 +181,30 @@ class DashboardController extends Controller
             $calYear = in_array($month, [1, 2, 3]) ? $year + 1 : $year;
             $startOfMonth = Carbon::createFromDate($calYear, $month, 1)->startOfDay();
             $endOfMonth   = $startOfMonth->copy()->endOfMonth();
-            $daysInMonth  = $startOfMonth->daysInMonth;
-
-            $weeks = [
-                ['label' => 'W1', 'start' => 1,  'end' => 7],
-                ['label' => 'W2', 'start' => 8,  'end' => 14],
-                ['label' => 'W3', 'start' => 15, 'end' => 21],
-                ['label' => 'W4', 'start' => 22, 'end' => min(28, $daysInMonth)],
-            ];
-            if ($daysInMonth > 28) {
-                $weeks[] = ['label' => 'W5', 'start' => 29, 'end' => $daysInMonth];
-            }
 
             $activities = Activity::whereIn('user_id', $bsUserIds)
                 ->whereBetween('date', [$startOfMonth, $endOfMonth])
                 ->get(['user_id', 'date', 'type_id']);
 
-            $columns       = array_column($weeks, 'label');
-            $colTypeTotals = array_fill(0, count($weeks), array_fill_keys($typeIds, 0));
-            $columnTotals  = array_fill(0, count($weeks), 0);
+            $monthLabel    = $startOfMonth->translatedFormat('M Y');
+            $columns       = [$monthLabel];
+            $colTypeTotals = [array_fill_keys($typeIds, 0)];
+            $columnTotals  = [0];
             $grandTotal    = 0;
             $rows          = [];
 
             foreach ($bsUsers as $bs) {
-                $userActs = $activities->where('user_id', $bs->id);
-                $data     = [];
-                $rowTotal = 0;
-
-                foreach ($weeks as $i => $week) {
-                    $weekActs = $userActs->filter(fn($a) =>
-                        Carbon::parse($a->date)->day >= $week['start'] &&
-                        Carbon::parse($a->date)->day <= $week['end']
-                    );
-
-                    $typeCounts = [];
-                    foreach ($typeIds as $tid) {
-                        $count = $weekActs->where('type_id', $tid)->count();
-                        $typeCounts[$tid] = $count;
-                        $colTypeTotals[$i][$tid] += $count;
-                    }
-                    $weekTotal = $weekActs->count();
-                    $data[] = ['type_counts' => $typeCounts, 'total' => $weekTotal];
-                    $columnTotals[$i] += $weekTotal;
-                    $rowTotal += $weekTotal;
+                $userActs   = $activities->where('user_id', $bs->id);
+                $typeCounts = [];
+                foreach ($typeIds as $tid) {
+                    $count = $userActs->where('type_id', $tid)->count();
+                    $typeCounts[$tid] = $count;
+                    $colTypeTotals[0][$tid] += $count;
                 }
-
-                $rows[] = ['name' => $bs->name, 'data' => $data, 'total' => $rowTotal];
-                $grandTotal += $rowTotal;
+                $monthTotal       = $userActs->count();
+                $columnTotals[0] += $monthTotal;
+                $rows[]           = ['name' => $bs->name, 'data' => [['type_counts' => $typeCounts, 'total' => $monthTotal]], 'total' => $monthTotal];
+                $grandTotal      += $monthTotal;
             }
 
             $periodLabel = $startOfMonth->translatedFormat('F Y');
