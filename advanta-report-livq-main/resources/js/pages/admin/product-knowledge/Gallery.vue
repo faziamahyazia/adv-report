@@ -24,6 +24,18 @@ function next() {
   lightboxIndex.value = (lightboxIndex.value + 1) % photos.length;
 }
 
+// Touch swipe for mobile lightbox
+let touchStartX = 0;
+function onTouchStart(e) {
+  touchStartX = e.touches[0].clientX;
+}
+function onTouchEnd(e) {
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  if (Math.abs(dx) > 50) {
+    dx < 0 ? next() : prev();
+  }
+}
+
 function goEditor() {
   router.get(route("admin.product-knowledge.photo-editor", product.id));
 }
@@ -35,172 +47,209 @@ function goIndex() {
 <template>
   <AuthenticatedLayout :title="product.name + ' — Foto'">
     <template #header>
-      <div class="row items-center q-gutter-sm">
-        <q-btn flat dense round icon="arrow_back" @click="goIndex" />
-        <div>
-          <div class="text-h6">{{ product.name }}</div>
-          <div class="text-caption text-grey-6">{{ product.category?.name }}</div>
+      <div class="row items-center no-wrap">
+        <q-btn flat dense round icon="arrow_back" class="q-mr-xs" @click="goIndex" />
+        <div class="col-grow" style="min-width:0">
+          <div class="text-subtitle1 text-bold ellipsis">{{ product.name }}</div>
+          <div class="text-caption text-grey-6 ellipsis">
+            {{ product.category?.name }}
+            <span v-if="photos.length" class="q-ml-xs">· {{ photos.length }} foto</span>
+          </div>
         </div>
+        <q-btn
+          v-if="canEdit"
+          flat
+          dense
+          round
+          icon="edit"
+          color="primary"
+          title="Kelola Foto"
+          class="q-ml-xs"
+          @click="goEditor"
+        />
       </div>
     </template>
 
     <!-- Empty state -->
-    <div v-if="photos.length === 0" class="q-pa-xl text-center text-grey-6">
-      <q-icon name="add_photo_alternate" size="64px" class="q-mb-md" />
-      <div class="text-subtitle1">Belum ada foto untuk varietas ini.</div>
+    <div v-if="photos.length === 0" class="q-pa-xl text-center text-grey-5">
+      <q-icon name="add_photo_alternate" size="72px" class="q-mb-md" />
+      <div class="text-subtitle1 text-grey-6">Belum ada foto untuk varietas ini.</div>
       <q-btn
         v-if="canEdit"
         color="primary"
         icon="upload"
         label="Unggah Foto"
-        class="q-mt-md"
+        unelevated
+        class="q-mt-lg"
         @click="goEditor"
       />
     </div>
 
-    <!-- Photo grid -->
-    <div v-else class="q-pa-sm row q-col-gutter-sm">
+    <!-- Photo masonry-style grid -->
+    <div v-else class="q-pa-sm row q-col-gutter-xs">
       <div
         v-for="(photo, index) in photos"
         :key="photo.id"
-        class="col-xs-6 col-sm-4 col-md-3 col-lg-2"
+        class="col-6 col-sm-4 col-md-3 col-lg-2"
       >
-        <q-card class="photo-card cursor-pointer" @click="openLightbox(index)">
+        <div class="gal-item cursor-pointer" @click="openLightbox(index)">
           <q-img
             :src="'/' + photo.image_path"
             ratio="1"
-            class="photo-thumb"
+            class="gal-img"
+            loading="lazy"
           >
             <template #error>
               <div class="absolute-full flex flex-center bg-grey-2">
-                <q-icon name="broken_image" size="40px" color="grey-5" />
+                <q-icon name="broken_image" size="36px" color="grey-5" />
               </div>
             </template>
+
+            <!-- Caption overlay on hover -->
+            <div v-if="photo.caption" class="gal-caption absolute-bottom">
+              {{ photo.caption }}
+            </div>
           </q-img>
-          <div v-if="photo.caption" class="text-caption q-pa-xs text-grey-7 ellipsis">
-            {{ photo.caption }}
-          </div>
-        </q-card>
+        </div>
       </div>
     </div>
 
-    <!-- Lightbox -->
-    <q-dialog v-model="lightboxOpen" maximized>
-      <div class="lightbox-container" @click.self="lightboxOpen = false">
+    <!-- Lightbox dialog -->
+    <q-dialog v-model="lightboxOpen" maximized transition-show="fade" transition-hide="fade">
+      <div
+        class="lb-container"
+        @click.self="lightboxOpen = false"
+        @touchstart="onTouchStart"
+        @touchend="onTouchEnd"
+      >
+        <!-- Close -->
         <q-btn
-          round
-          flat
-          color="white"
-          icon="close"
-          class="lightbox-close"
+          round flat color="white" icon="close"
+          class="lb-close"
           @click="lightboxOpen = false"
         />
-        <q-btn
-          v-if="photos.length > 1"
-          round
-          flat
-          color="white"
-          icon="chevron_left"
-          class="lightbox-prev"
-          @click="prev"
-        />
+
+        <!-- Image -->
         <q-img
           :src="'/' + photos[lightboxIndex].image_path"
           fit="contain"
-          class="lightbox-img"
+          class="lb-img"
+          @click.stop
         />
-        <div v-if="photos[lightboxIndex].caption" class="lightbox-caption">
-          {{ photos[lightboxIndex].caption }}
+
+        <!-- Caption + counter bar -->
+        <div class="lb-bottom">
+          <div v-if="photos[lightboxIndex].caption" class="lb-caption">
+            {{ photos[lightboxIndex].caption }}
+          </div>
+          <div class="lb-counter">{{ lightboxIndex + 1 }} / {{ photos.length }}</div>
         </div>
-        <div class="lightbox-counter text-white">
-          {{ lightboxIndex + 1 }} / {{ photos.length }}
-        </div>
-        <q-btn
-          v-if="photos.length > 1"
-          round
-          flat
-          color="white"
-          icon="chevron_right"
-          class="lightbox-next"
-          @click="next"
-        />
+
+        <!-- Nav buttons -->
+        <template v-if="photos.length > 1">
+          <q-btn
+            round unelevated color="black" text-color="white"
+            icon="chevron_left"
+            class="lb-prev"
+            @click="prev"
+          />
+          <q-btn
+            round unelevated color="black" text-color="white"
+            icon="chevron_right"
+            class="lb-next"
+            @click="next"
+          />
+        </template>
       </div>
     </q-dialog>
-
-    <!-- Admin FAB -->
-    <q-page-sticky v-if="canEdit" position="bottom-right" :offset="[18, 18]">
-      <q-btn
-        fab
-        icon="edit"
-        color="primary"
-        title="Kelola Foto"
-        @click="goEditor"
-      />
-    </q-page-sticky>
   </AuthenticatedLayout>
 </template>
 
 <style scoped>
-.photo-card {
-  border-radius: 8px;
-  transition: box-shadow 0.2s;
+/* Gallery grid */
+.gal-item {
+  border-radius: 6px;
+  overflow: hidden;
+  transition: transform 0.15s;
 }
-.photo-card:hover {
-  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+.gal-item:hover {
+  transform: scale(1.02);
 }
-.photo-thumb {
-  border-radius: 8px 8px 0 0;
+.gal-img {
+  display: block;
+  border-radius: 6px;
 }
-.lightbox-container {
+.gal-caption {
+  background: linear-gradient(transparent, rgba(0,0,0,0.6));
+  color: #fff;
+  font-size: 11px;
+  padding: 6px 8px 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Lightbox */
+.lb-container {
   position: relative;
   width: 100%;
   height: 100%;
-  background: rgba(0,0,0,0.92);
+  background: rgba(0,0,0,0.93);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
 }
-.lightbox-img {
-  max-width: 90vw;
-  max-height: 88vh;
-  width: auto;
-  height: auto;
-}
-.lightbox-close {
+.lb-close {
   position: absolute;
   top: 10px;
   right: 10px;
-  z-index: 10;
+  z-index: 20;
+  background: rgba(0,0,0,0.4) !important;
 }
-.lightbox-prev {
-  position: absolute;
-  left: 10px;
-  z-index: 10;
+.lb-img {
+  width: 100%;
+  height: calc(100vh - 70px);
+  max-width: 100vw;
 }
-.lightbox-next {
+.lb-bottom {
   position: absolute;
-  right: 10px;
-  z-index: 10;
-}
-.lightbox-caption {
-  position: absolute;
-  bottom: 40px;
-  left: 50%;
-  transform: translateX(-50%);
-  color: #fff;
-  background: rgba(0,0,0,0.5);
-  padding: 4px 16px;
-  border-radius: 4px;
-  font-size: 0.9rem;
-  max-width: 80vw;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(0,0,0,0.55);
+  padding: 8px 16px;
   text-align: center;
 }
-.lightbox-counter {
+.lb-caption {
+  color: #fff;
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+.lb-counter {
+  color: rgba(255,255,255,0.65);
+  font-size: 11px;
+}
+.lb-prev {
   position: absolute;
-  bottom: 14px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 0.8rem;
-  opacity: 0.7;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 20;
+  background: rgba(0,0,0,0.5) !important;
+}
+.lb-next {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 20;
+  background: rgba(0,0,0,0.5) !important;
+}
+
+/* Mobile: make nav buttons bigger and move to bottom area */
+@media (max-width: 600px) {
+  .lb-prev { left: 4px; }
+  .lb-next { right: 4px; }
 }
 </style>

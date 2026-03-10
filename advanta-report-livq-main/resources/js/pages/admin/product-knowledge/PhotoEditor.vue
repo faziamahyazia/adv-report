@@ -36,7 +36,7 @@ async function deletePhoto(photo) {
   $q.dialog({
     title: "Hapus Foto",
     message: "Yakin ingin menghapus foto ini?",
-    ok: { label: "Hapus", color: "negative" },
+    ok: { label: "Hapus", color: "negative", unelevated: true },
     cancel: { label: "Batal", flat: true },
   }).onOk(async () => {
     deleting.value = photo.id;
@@ -55,27 +55,27 @@ async function deletePhoto(photo) {
 function goGallery() {
   router.get(route("admin.product-knowledge.gallery", product.value.id));
 }
-function goIndex() {
-  router.get(route("admin.product-knowledge.index"));
-}
 </script>
 
 <template>
   <AuthenticatedLayout :title="'Kelola Foto — ' + product.name">
     <template #header>
-      <div class="row items-center q-gutter-sm">
-        <q-btn flat dense round icon="arrow_back" @click="goGallery" />
-        <div>
-          <div class="text-h6">Kelola Foto</div>
-          <div class="text-caption text-grey-6">{{ product.name }}</div>
+      <div class="row items-center no-wrap">
+        <q-btn flat dense round icon="arrow_back" class="q-mr-xs" @click="goGallery" />
+        <div class="col-grow" style="min-width:0">
+          <div class="text-subtitle1 text-bold ellipsis">Kelola Foto</div>
+          <div class="text-caption text-grey-6 ellipsis">{{ product.name }}</div>
         </div>
       </div>
     </template>
 
-    <!-- Upload Form -->
-    <q-card class="q-ma-sm">
-      <q-card-section>
-        <div class="text-subtitle1 text-bold q-mb-sm">Unggah Foto Baru</div>
+    <!-- Upload Card -->
+    <q-card flat bordered class="q-ma-sm upload-card">
+      <q-card-section class="q-pb-xs">
+        <div class="row items-center q-mb-sm">
+          <q-icon name="add_a_photo" color="primary" size="20px" class="q-mr-xs" />
+          <span class="text-subtitle2 text-bold">Unggah Foto Baru</span>
+        </div>
         <ImageUpload
           v-model="form.image"
           label="Pilih Foto:"
@@ -92,61 +92,77 @@ function goIndex() {
           :error-message="form.errors.caption"
         />
       </q-card-section>
-      <q-card-actions>
+      <q-card-actions class="q-pt-xs q-px-md q-pb-md">
         <q-btn
+          unelevated
           color="primary"
           icon="upload"
           label="Simpan Foto"
           :loading="form.processing"
+          style="min-width:140px"
           @click="submit"
         />
       </q-card-actions>
     </q-card>
 
-    <!-- Existing Photos -->
-    <div class="q-px-sm q-mt-md">
-      <div class="text-subtitle1 text-bold q-mb-sm">
-        Foto yang sudah ada ({{ photos.length }})
+    <!-- Divider + Existing Photos -->
+    <div class="q-px-sm q-mt-sm">
+      <div class="row items-center q-mb-sm q-mx-xs">
+        <q-icon name="collections" size="18px" color="grey-6" class="q-mr-xs" />
+        <span class="text-subtitle2 text-bold text-grey-8">
+          Foto tersimpan
+          <q-badge
+            :label="photos.length"
+            color="grey-5"
+            text-color="grey-9"
+            class="q-ml-xs"
+          />
+        </span>
       </div>
 
-      <div v-if="photos.length === 0" class="text-grey-6 text-center q-py-lg">
+      <div v-if="photos.length === 0" class="text-center text-grey-5 q-py-lg">
         <q-icon name="add_photo_alternate" size="48px" />
-        <div>Belum ada foto, silakan unggah foto di atas.</div>
+        <div class="text-caption q-mt-xs">Belum ada foto. Unggah foto di atas.</div>
       </div>
 
-      <div v-else class="row q-col-gutter-sm">
+      <div v-else class="row q-col-gutter-xs">
         <div
           v-for="photo in photos"
           :key="photo.id"
-          class="col-xs-6 col-sm-4 col-md-3"
+          class="col-6 col-sm-4 col-md-3"
         >
-          <q-card class="photo-item">
+          <div class="pe-item">
             <q-img
               :src="'/' + photo.image_path"
               ratio="1"
+              class="pe-img"
+              loading="lazy"
             >
               <template #error>
                 <div class="absolute-full flex flex-center bg-grey-2">
-                  <q-icon name="broken_image" size="40px" color="grey-5" />
+                  <q-icon name="broken_image" size="32px" color="grey-5" />
                 </div>
               </template>
             </q-img>
-            <div v-if="photo.caption" class="text-caption q-pa-xs text-grey-7 ellipsis">
+
+            <!-- Delete overlay button -->
+            <q-btn
+              class="pe-del"
+              round
+              unelevated
+              size="sm"
+              color="negative"
+              icon="delete"
+              :loading="deleting === photo.id"
+              title="Hapus foto"
+              @click="deletePhoto(photo)"
+            />
+
+            <!-- Caption -->
+            <div v-if="photo.caption" class="pe-caption text-caption text-grey-7 ellipsis q-px-xs q-py-xs">
               {{ photo.caption }}
             </div>
-            <q-card-actions class="q-pa-xs">
-              <q-btn
-                flat
-                dense
-                size="sm"
-                icon="delete"
-                color="negative"
-                label="Hapus"
-                :loading="deleting === photo.id"
-                @click="deletePhoto(photo)"
-              />
-            </q-card-actions>
-          </q-card>
+          </div>
         </div>
       </div>
     </div>
@@ -154,7 +170,33 @@ function goIndex() {
 </template>
 
 <style scoped>
-.photo-item {
+.upload-card {
+  border-radius: 10px;
+}
+/* Photo editor grid items */
+.pe-item {
+  position: relative;
   border-radius: 8px;
+  overflow: hidden;
+  background: #f0f0f0;
+}
+.pe-img {
+  display: block;
+  border-radius: 8px;
+}
+.pe-del {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  opacity: 0.9;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+.pe-caption {
+  background: #fafafa;
+  border-top: 1px solid #eee;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

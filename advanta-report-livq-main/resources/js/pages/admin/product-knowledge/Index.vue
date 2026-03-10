@@ -39,8 +39,8 @@ watch(filter, () => {
 function goGallery(product) {
   router.get(route("admin.product-knowledge.gallery", product.id));
 }
-
-function goEditor(product) {
+function goEditor(product, e) {
+  e.stopPropagation();
   router.get(route("admin.product-knowledge.photo-editor", product.id));
 }
 
@@ -54,8 +54,8 @@ const canEdit = page.props.auth?.user?.role === "admin";
     </template>
 
     <!-- Filter bar -->
-    <div class="q-pa-sm row q-col-gutter-sm items-center">
-      <div class="col-xs-12 col-sm-5 col-md-4">
+    <div class="pk-filter-bar q-pa-sm row q-col-gutter-xs">
+      <div class="col-7 col-sm-5 col-md-4">
         <q-input
           v-model="filter.search"
           dense
@@ -64,10 +64,10 @@ const canEdit = page.props.auth?.user?.role === "admin";
           clearable
           bg-color="white"
         >
-          <template #prepend><q-icon name="search" /></template>
+          <template #prepend><q-icon name="search" size="18px" /></template>
         </q-input>
       </div>
-      <div class="col-xs-12 col-sm-5 col-md-4">
+      <div class="col-5 col-sm-4 col-md-3">
         <q-select
           v-model="filter.category_id"
           :options="categoryOptions"
@@ -82,15 +82,27 @@ const canEdit = page.props.auth?.user?.role === "admin";
       </div>
     </div>
 
-    <!-- Loading state -->
-    <div v-if="loading" class="q-pa-lg text-center">
-      <q-spinner size="40px" color="primary" />
+    <!-- Loading skeletons -->
+    <div v-if="loading" class="q-pa-sm row q-col-gutter-sm">
+      <div
+        v-for="n in 8"
+        :key="n"
+        class="col-6 col-sm-4 col-md-3 col-lg-2"
+      >
+        <q-card flat bordered class="pk-card">
+          <q-skeleton height="140px" square />
+          <q-card-section class="q-pa-xs q-pt-sm">
+            <q-skeleton type="text" width="70%" />
+            <q-skeleton type="text" width="50%" class="q-mt-xs" />
+          </q-card-section>
+        </q-card>
+      </div>
     </div>
 
     <!-- Empty state -->
-    <div v-else-if="products.length === 0" class="q-pa-lg text-center text-grey-6">
-      <q-icon name="photo_library" size="48px" class="q-mb-sm" />
-      <div>Tidak ada varietas ditemukan.</div>
+    <div v-else-if="products.length === 0" class="q-pa-xl text-center text-grey-6">
+      <q-icon name="photo_library" size="56px" class="q-mb-sm" />
+      <div class="text-subtitle2">Tidak ada varietas ditemukan.</div>
     </div>
 
     <!-- Card grid -->
@@ -98,45 +110,61 @@ const canEdit = page.props.auth?.user?.role === "admin";
       <div
         v-for="product in products"
         :key="product.id"
-        class="col-xs-6 col-sm-4 col-md-3 col-lg-2"
+        class="col-6 col-sm-4 col-md-3 col-lg-2"
       >
-        <q-card class="pk-card cursor-pointer full-height" @click="goGallery(product)">
-          <!-- Thumbnail -->
-          <q-img
-            v-if="product.photos && product.photos.length > 0"
-            :src="'/' + product.photos[0].image_path"
-            ratio="1"
-            class="card-thumb"
-          >
-            <template #error>
-              <div class="absolute-full flex flex-center bg-grey-2">
-                <q-icon name="broken_image" size="40px" color="grey-5" />
-              </div>
-            </template>
-          </q-img>
-          <div v-else class="card-thumb-placeholder flex flex-center bg-grey-2">
-            <q-icon name="add_photo_alternate" size="40px" color="grey-5" />
+        <q-card
+          flat
+          bordered
+          class="pk-card cursor-pointer"
+          @click="goGallery(product)"
+        >
+          <!-- Thumbnail with overlay -->
+          <div class="thumb-wrap">
+            <q-img
+              v-if="product.photos && product.photos.length > 0"
+              :src="'/' + product.photos[0].image_path"
+              ratio="1"
+              class="thumb-img"
+              loading="lazy"
+            >
+              <template #error>
+                <div class="absolute-full flex flex-center bg-grey-2">
+                  <q-icon name="image_not_supported" size="32px" color="grey-5" />
+                </div>
+              </template>
+            </q-img>
+            <div v-else class="thumb-placeholder flex flex-center bg-grey-2">
+              <q-icon name="add_photo_alternate" size="36px" color="grey-5" />
+            </div>
+
+            <!-- Photo count badge -->
+            <div class="photo-badge">
+              <q-icon name="image" size="12px" />
+              {{ product.photos_count }}
+            </div>
+
+            <!-- Admin edit button overlay -->
+            <q-btn
+              v-if="canEdit"
+              class="edit-overlay"
+              round
+              unelevated
+              size="sm"
+              color="white"
+              text-color="primary"
+              icon="edit"
+              title="Kelola Foto"
+              @click="goEditor(product, $event)"
+            />
           </div>
 
-          <q-card-section class="q-pa-sm">
-            <div class="text-subtitle2 ellipsis">{{ product.name }}</div>
-            <div class="text-caption text-grey-6 ellipsis">{{ product.category?.name }}</div>
-            <div class="text-caption text-grey-7">
-              <q-icon name="photo" size="14px" /> {{ product.photos_count }} foto
+          <!-- Info -->
+          <q-card-section class="q-pa-xs q-pt-sm">
+            <div class="text-caption text-bold ellipsis pk-name">{{ product.name }}</div>
+            <div class="text-caption text-grey-6 ellipsis" style="font-size:11px">
+              {{ product.category?.name ?? "—" }}
             </div>
           </q-card-section>
-
-          <q-card-actions v-if="canEdit" class="q-pa-xs" @click.stop>
-            <q-btn
-              flat
-              dense
-              size="sm"
-              icon="edit"
-              color="primary"
-              label="Kelola Foto"
-              @click="goEditor(product)"
-            />
-          </q-card-actions>
         </q-card>
       </div>
     </div>
@@ -144,18 +172,52 @@ const canEdit = page.props.auth?.user?.role === "admin";
 </template>
 
 <style scoped>
+.pk-filter-bar {
+  background: #f5f7fa;
+  border-bottom: 1px solid #e8eaed;
+}
 .pk-card {
-  border-radius: 8px;
-  transition: box-shadow 0.2s;
+  border-radius: 10px;
+  transition: box-shadow 0.18s, transform 0.18s;
+  overflow: hidden;
 }
 .pk-card:hover {
-  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  box-shadow: 0 4px 18px rgba(0,0,0,0.13);
+  transform: translateY(-2px);
 }
-.card-thumb {
-  border-radius: 8px 8px 0 0;
+.thumb-wrap {
+  position: relative;
+  overflow: hidden;
 }
-.card-thumb-placeholder {
-  height: 150px;
-  border-radius: 8px 8px 0 0;
+.thumb-img {
+  display: block;
+}
+.thumb-placeholder {
+  height: 130px;
+}
+.photo-badge {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  font-size: 11px;
+  padding: 2px 7px 2px 5px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  line-height: 1;
+}
+.edit-overlay {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  opacity: 0.9;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+}
+.pk-name {
+  font-size: 12px;
+  line-height: 1.3;
 }
 </style>
