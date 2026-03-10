@@ -33,7 +33,7 @@ onMounted(() => {
 
 <template>
   <q-layout view="lHh LpR lFf">
-    <q-header>
+    <q-header class="bg-white text-dark">
       <q-toolbar class="bg-grey-1 text-black toolbar-scrolled">
         <q-btn
           v-if="!leftDrawerOpen"
