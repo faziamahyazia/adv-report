@@ -5,6 +5,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
+  <!-- PWA -->
+  <meta name="theme-color" content="#388E3C">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="AdvReport">
+  <link rel="manifest" href="/build/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+
   <title inertia>{{ config('app.name', 'Laravel') }}</title>
 
   <link type="image/png" href="/assets/img/favicon.png" rel="icon" />
@@ -40,6 +49,13 @@
 
 <body class="font-sans antialiased">
   @inertia
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('/sw.js', { scope: '/' });
+      });
+    }
+  </script>
 </body>
 
 </html>
