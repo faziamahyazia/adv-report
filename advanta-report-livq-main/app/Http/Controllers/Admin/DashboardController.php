@@ -211,6 +211,7 @@ class DashboardController extends Controller
             }
 
             $periodLabel = $startOfMonth->translatedFormat('F Y');
+            $summary     = null;
 
         } elseif ($viewType === 'quarter') {
             $qMonths = $fiscalQuarterMonths[$quarter];
@@ -258,6 +259,13 @@ class DashboardController extends Controller
 
             $quarterLabels = [1 => 'Q1', 2 => 'Q2', 3 => 'Q3', 4 => 'Q4'];
             $periodLabel   = "Kwartal {$quarter} ({$quarterLabels[$quarter]}) — Tahun Fiskal {$year}/" . ($year + 1);
+
+            $qTargets = ActivityTarget::with('details')
+                ->whereIn('user_id', $bsUserIds)
+                ->where('year', $year)
+                ->where('quarter', $quarter)
+                ->get();
+            $summary = $this->buildKpiSummary($bsUsers, $typeIds, $rows, $qTargets);
 
         } else { // fiscal_year
             $start = Carbon::createFromDate($year, 4, 1)->startOfDay();
@@ -309,6 +317,12 @@ class DashboardController extends Controller
             }
 
             $periodLabel = "Tahun Fiskal {$year}/" . ($year + 1);
+
+            $fyTargets = ActivityTarget::with('details')
+                ->whereIn('user_id', $bsUserIds)
+                ->where('year', $year)
+                ->get();
+            $summary = $this->buildKpiSummary($bsUsers, $typeIds, $rows, $fyTargets);
         }
 
         return inertia('admin/dashboard/Index', [
@@ -321,8 +335,81 @@ class DashboardController extends Controller
                 'col_type_totals' => array_values($colTypeTotals),
                 'column_totals'   => $columnTotals,
                 'grand_total'     => $grandTotal,
+                'summary'         => $summary,
             ],
         ]);
+    }
+
+    private function buildKpiSummary($bsUsers, array $typeIds, array $rows, $targets): array
+    {
+        // Build target map: user_id -> type_id -> total_target_qty
+        $targetMap = [];
+        foreach ($targets as $target) {
+            $uid = $target->user_id;
+            foreach ($target->details as $d) {
+                $tid = $d->type_id;
+                $qty = (int)$d->month1_qty + (int)$d->month2_qty + (int)$d->month3_qty;
+                $targetMap[$uid][$tid] = ($targetMap[$uid][$tid] ?? 0) + $qty;
+            }
+        }
+
+        $summaryRows = [];
+        $totTypeAct  = array_fill_keys($typeIds, 0);
+        $totTypeTgt  = array_fill_keys($typeIds, 0);
+        $totActual   = 0;
+        $totTarget   = 0;
+
+        foreach ($bsUsers as $i => $bs) {
+            $rowData = $rows[$i] ?? null;
+
+            // Sum actuals per type across all periods
+            $typeAct = array_fill_keys($typeIds, 0);
+            if ($rowData) {
+                foreach ($rowData['data'] as $period) {
+                    foreach ($typeIds as $tid) {
+                        $typeAct[$tid] += $period['type_counts'][$tid] ?? 0;
+                    }
+                }
+            }
+
+            // Target per active type
+            $typeTgt = array_fill_keys($typeIds, 0);
+            foreach (($targetMap[$bs->id] ?? []) as $tid => $qty) {
+                if (array_key_exists($tid, $typeTgt)) {
+                    $typeTgt[$tid] = $qty;
+                }
+            }
+
+            $ta = $rowData['total'] ?? 0;
+            $tt = array_sum($typeTgt);
+
+            foreach ($typeIds as $tid) {
+                $totTypeAct[$tid] += $typeAct[$tid];
+                $totTypeTgt[$tid] += $typeTgt[$tid];
+            }
+            $totActual += $ta;
+            $totTarget += $tt;
+
+            $summaryRows[] = [
+                'name'         => $bs->name,
+                'type_actuals' => $typeAct,
+                'type_targets' => $typeTgt,
+                'total_actual' => $ta,
+                'total_target' => $tt,
+                'kpi'          => $tt > 0 ? round($ta / $tt * 100) : null,
+            ];
+        }
+
+        return [
+            'rows'   => $summaryRows,
+            'totals' => [
+                'type_actuals' => $totTypeAct,
+                'type_targets' => $totTypeTgt,
+                'total_actual' => $totActual,
+                'total_target' => $totTarget,
+                'kpi'          => $totTarget > 0 ? round($totActual / $totTarget * 100) : null,
+            ],
+        ];
     }
 
     private function getQuarterFromMonth(int $month): int
