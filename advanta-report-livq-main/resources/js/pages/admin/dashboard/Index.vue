@@ -30,7 +30,7 @@ const filter = reactive({
 
 const years = [
   ...Array.from({ length: 3 }, (_, i) => {
-    const year = currentYear - 1 + i;
+    const year = currentFiscalYear - 1 + i;
     return { value: year, label: String(year) + " / " + String(year + 1) };
   }),
 ];

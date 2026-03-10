@@ -257,8 +257,10 @@ class DashboardController extends Controller
                 $grandTotal += $rowTotal;
             }
 
-            $quarterLabels = [1 => 'Q1', 2 => 'Q2', 3 => 'Q3', 4 => 'Q4'];
-            $periodLabel   = "Kwartal {$quarter} ({$quarterLabels[$quarter]}) — Tahun Fiskal {$year}/" . ($year + 1);
+            $quarterLabels = [1 => 'Q1 (Apr-Jun)', 2 => 'Q2 (Jul-Sep)', 3 => 'Q3 (Okt-Des)', 4 => 'Q4 (Jan-Mar)'];
+            $qStartMonth   = Carbon::createFromDate($qYear, $qMonths[0], 1)->translatedFormat('M Y');
+            $qEndMonth     = Carbon::createFromDate($qYear, $qMonths[2], 1)->translatedFormat('M Y');
+            $periodLabel   = "Kwartal {$quarter} ({$qStartMonth} – {$qEndMonth}) — Tahun Fiskal {$year}/" . ($year + 1);
 
             $qTargets = ActivityTarget::with('details')
                 ->whereIn('user_id', $bsUserIds)
