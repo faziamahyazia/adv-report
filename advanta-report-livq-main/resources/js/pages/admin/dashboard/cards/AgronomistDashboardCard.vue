@@ -10,6 +10,7 @@ const columnTotals = computed(() => data.value.column_totals ?? []);
 const colTypeTotals = computed(() => data.value.col_type_totals ?? []);
 const grandTotal = computed(() => data.value.grand_total ?? 0);
 const periodLabel = computed(() => data.value.period_label ?? "");
+const multiPeriod = computed(() => columns.value.length > 1);
 </script>
 
 <template>
@@ -23,56 +24,61 @@ const periodLabel = computed(() => data.value.period_label ?? "");
 
     <div v-else class="table-wrapper">
       <table class="agro-table">
+        <!-- Header: Jenis Kegiatan | BS names | Total -->
         <thead>
-          <!-- Row 1: period headers (span over all type sub-columns + total) -->
           <tr>
-            <th class="col-name" rowspan="2">Nama BS</th>
-            <th
-              v-for="col in columns"
-              :key="col"
-              :colspan="activityTypes.length + 1"
-            >
-              {{ col }}
+            <th class="col-type">Jenis Kegiatan</th>
+            <th v-for="row in rows" :key="row.name" class="col-bs">
+              {{ row.name }}
             </th>
-            <th rowspan="2">Total</th>
-          </tr>
-          <!-- Row 2: activity type sub-headers per period -->
-          <tr>
-            <template v-for="col in columns" :key="col">
-              <th v-for="t in activityTypes" :key="t.id">{{ t.name }}</th>
-              <th>Jml</th>
-            </template>
+            <th>Total</th>
           </tr>
         </thead>
+
         <tbody>
-          <tr v-for="row in rows" :key="row.name">
-            <td class="col-name">{{ row.name }}</td>
-            <template v-for="(period, i) in row.data" :key="i">
-              <td v-for="t in activityTypes" :key="t.id" class="text-center">
+          <template v-for="(col, ci) in columns" :key="ci">
+            <!-- Period separator (only when multiple periods) -->
+            <tr v-if="multiPeriod" class="period-header-row">
+              <td :colspan="rows.length + 2">{{ col }}</td>
+            </tr>
+
+            <!-- One row per activity type -->
+            <tr v-for="t in activityTypes" :key="t.id">
+              <td class="col-type">{{ t.name }}</td>
+              <td v-for="row in rows" :key="row.name" class="text-center">
                 <span
                   :class="
-                    (period.type_counts[t.id] ?? 0) > 0
+                    (row.data[ci]?.type_counts[t.id] ?? 0) > 0
                       ? 'text-primary text-bold'
                       : 'text-grey-5'
                   "
                 >
-                  {{ period.type_counts[t.id] ?? 0 }}
+                  {{ row.data[ci]?.type_counts[t.id] ?? 0 }}
                 </span>
               </td>
-              <td class="text-center text-bold">{{ period.total }}</td>
-            </template>
-            <td class="text-center text-bold">{{ row.total }}</td>
-          </tr>
-        </tbody>
-        <tfoot>
-          <tr class="footer-row">
-            <td class="col-name text-bold">Total</td>
-            <template v-for="(typeTotals, i) in colTypeTotals" :key="i">
-              <td v-for="t in activityTypes" :key="t.id" class="text-center text-bold">
-                {{ typeTotals[t.id] ?? 0 }}
+              <td class="text-center text-bold">
+                {{ colTypeTotals[ci]?.[t.id] ?? 0 }}
               </td>
-              <td class="text-center text-bold">{{ columnTotals[i] }}</td>
-            </template>
+            </tr>
+
+            <!-- Period total row -->
+            <tr class="period-total-row">
+              <td class="col-type text-bold">Total</td>
+              <td v-for="row in rows" :key="row.name" class="text-center text-bold">
+                {{ row.data[ci]?.total ?? 0 }}
+              </td>
+              <td class="text-center text-bold">{{ columnTotals[ci] }}</td>
+            </tr>
+          </template>
+        </tbody>
+
+        <!-- Grand total row (only when multiple periods) -->
+        <tfoot v-if="multiPeriod">
+          <tr class="footer-row">
+            <td class="col-type text-bold">Total Semua</td>
+            <td v-for="row in rows" :key="row.name" class="text-center text-bold">
+              {{ row.total }}
+            </td>
             <td class="text-center text-bold">{{ grandTotal }}</td>
           </tr>
         </tfoot>
@@ -94,20 +100,37 @@ const periodLabel = computed(() => data.value.period_label ?? "");
 .agro-table td {
   padding: 5px 10px;
   border: 1px solid #e0e0e0;
-  white-space: nowrap;
 }
 .agro-table th {
   background: #f5f5f5;
   text-align: center;
   font-weight: 600;
 }
-.agro-table th.col-name,
-.agro-table td.col-name {
+.col-type {
   text-align: left;
-  min-width: 140px;
+  min-width: 110px;
+  white-space: nowrap;
+}
+.col-bs {
+  min-width: 80px;
+  max-width: 120px;
+  word-break: break-word;
+  white-space: normal;
+}
+.period-header-row td {
+  background: #e3f2fd;
+  font-weight: 700;
+  font-size: 0.82rem;
+  padding: 4px 10px;
+  letter-spacing: 0.02em;
+}
+.period-total-row td {
+  background: #f9fbe7;
+  border-top: 1px solid #c5cae9;
 }
 .footer-row td {
-  background: #fafafa;
-  border-top: 2px solid #bdbdbd;
+  background: #fce4ec;
+  border-top: 2px solid #e57373;
+  font-weight: 700;
 }
 </style>
