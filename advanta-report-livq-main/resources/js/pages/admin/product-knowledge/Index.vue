@@ -48,37 +48,36 @@ const canEdit = page.props.auth?.user?.role === "admin";
 </script>
 
 <template>
-  <AuthenticatedLayout title="Product Knowledge">
+  <AuthenticatedLayout>
+    <template #title>Product Knowledge</template>
     <template #header>
-      <div class="text-h6">Product Knowledge</div>
+      <q-toolbar class="filter-bar">
+        <q-input
+          v-model="filter.search"
+          dense
+          outlined
+          placeholder="Cari varietas..."
+          clearable
+          bg-color="white"
+          style="max-width:240px"
+          class="q-mr-sm"
+        >
+          <template #prepend><q-icon name="search" size="18px" /></template>
+        </q-input>
+        <q-select
+          v-model="filter.category_id"
+          :options="categoryOptions"
+          option-value="value"
+          option-label="label"
+          emit-value
+          map-options
+          dense
+          outlined
+          bg-color="white"
+          style="min-width:130px; max-width:180px"
+        />
+      </q-toolbar>
     </template>
-
-    <!-- Filter bar -->
-    <div class="pk-filter">
-      <q-input
-        v-model="filter.search"
-        dense
-        outlined
-        placeholder="Cari varietas..."
-        clearable
-        bg-color="white"
-        style="max-width:260px"
-      >
-        <template #prepend><q-icon name="search" size="18px" /></template>
-      </q-input>
-      <q-select
-        v-model="filter.category_id"
-        :options="categoryOptions"
-        option-value="value"
-        option-label="label"
-        emit-value
-        map-options
-        dense
-        outlined
-        bg-color="white"
-        style="min-width:130px; max-width:180px"
-      />
-    </div>
 
     <!-- Loading skeletons -->
     <div v-if="loading" class="pk-grid">
@@ -145,16 +144,6 @@ const canEdit = page.props.auth?.user?.role === "admin";
 </template>
 
 <style scoped>
-.pk-filter {
-  display: flex;
-  gap: 8px;
-  flex-wrap: nowrap;
-  padding: 8px;
-  background: #f8f8f8;
-  border-bottom: 1px solid #eee;
-  overflow: hidden;
-}
-
 /* CSS Grid — no negative margins, no horizontal overflow */
 .pk-grid {
   display: grid;

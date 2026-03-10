@@ -56,14 +56,15 @@ function goGallery() {
 
 <template>
   <AuthenticatedLayout :title="'Kelola Foto — ' + product.name">
+    <template #title>Product Knowledge</template>
     <template #header>
-      <div class="row items-center no-wrap">
+      <q-toolbar class="filter-bar">
         <q-btn flat dense round icon="arrow_back" class="q-mr-xs" @click="goGallery" />
         <div class="col-grow" style="min-width:0">
-          <div class="text-subtitle1 text-bold ellipsis">Kelola Foto</div>
-          <div class="text-caption text-grey-6 ellipsis">{{ product.name }}</div>
+          <div class="text-subtitle2 text-bold ellipsis">{{ product.name }}</div>
+          <div class="text-caption text-grey-6">Kelola Foto</div>
         </div>
-      </div>
+      </q-toolbar>
     </template>
 
     <!-- Upload section -->

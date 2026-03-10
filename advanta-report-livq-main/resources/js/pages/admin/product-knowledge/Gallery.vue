@@ -41,12 +41,13 @@ function goIndex() {
 </script>
 
 <template>
-  <AuthenticatedLayout :title="product.name + ' — Foto'">
+  <AuthenticatedLayout :title="product.name + ' — Product Knowledge'">
+    <template #title>Product Knowledge</template>
     <template #header>
-      <div class="row items-center no-wrap">
+      <q-toolbar class="filter-bar">
         <q-btn flat dense round icon="arrow_back" class="q-mr-xs" @click="goIndex" />
         <div class="col-grow" style="min-width:0">
-          <div class="text-subtitle1 text-bold ellipsis">{{ product.name }}</div>
+          <div class="text-subtitle2 text-bold ellipsis">{{ product.name }}</div>
           <div class="text-caption text-grey-6 ellipsis">
             {{ product.category?.name }}
             <span v-if="photos.length" class="q-ml-xs">· {{ photos.length }} foto</span>
@@ -61,7 +62,7 @@ function goIndex() {
           class="q-ml-xs"
           @click="goEditor"
         />
-      </div>
+      </q-toolbar>
     </template>
 
     <!-- Empty state -->
