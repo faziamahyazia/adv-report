@@ -15,6 +15,7 @@ use App\Http\Controllers\Admin\DemoPlotVisitController;
 use App\Http\Controllers\Admin\InventoryLogController;
 use App\Http\Controllers\Admin\ProductCategoryController;
 use App\Http\Controllers\Admin\ProductController;
+use App\Http\Controllers\Admin\ProductKnowledgeController;
 use App\Http\Controllers\Admin\ProfileController;
 use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Admin\UserController;
@@ -91,6 +92,15 @@ Route::middleware([Auth::class])->group(function () {
                 Route::get('edit/{id}', [ProductCategoryController::class, 'editor'])->name('admin.product-category.edit');
                 Route::post('save', [ProductCategoryController::class, 'save'])->name('admin.product-category.save');
                 Route::post('delete/{id}', [ProductCategoryController::class, 'delete'])->name('admin.product-category.delete');
+            });
+
+            Route::prefix('product-knowledge')->group(function () {
+                Route::get('', [ProductKnowledgeController::class, 'index'])->name('admin.product-knowledge.index');
+                Route::get('data', [ProductKnowledgeController::class, 'data'])->name('admin.product-knowledge.data');
+                Route::get('{id}/gallery', [ProductKnowledgeController::class, 'gallery'])->name('admin.product-knowledge.gallery');
+                Route::get('{id}/photo-editor', [ProductKnowledgeController::class, 'photoEditor'])->name('admin.product-knowledge.photo-editor');
+                Route::post('{id}/photo-save', [ProductKnowledgeController::class, 'photoSave'])->name('admin.product-knowledge.photo-save');
+                Route::post('photo-delete/{photoId}', [ProductKnowledgeController::class, 'photoDelete'])->name('admin.product-knowledge.photo-delete');
             });
 
             Route::prefix('customers')->group(function () {

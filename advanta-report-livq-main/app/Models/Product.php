@@ -63,6 +63,11 @@ class Product extends Model
         return $this->belongsTo(User::class, 'updated_by_uid');
     }
 
+    public function photos()
+    {
+        return $this->hasMany(ProductPhoto::class)->orderBy('sort_order');
+    }
+
     /**
      * Get the number of active products.
      */

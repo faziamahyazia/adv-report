@@ -13,6 +13,10 @@ return [
         'admin.product.data',
         'admin.product.detail',
 
+        'admin.product-knowledge.index',
+        'admin.product-knowledge.data',
+        'admin.product-knowledge.gallery',
+
         'admin.demo-plot.index',
         'admin.demo-plot.data',
         'admin.demo-plot.detail',
@@ -76,6 +80,10 @@ return [
         'admin.product.index',
         'admin.product.data',
         'admin.product.detail',
+
+        'admin.product-knowledge.index',
+        'admin.product-knowledge.data',
+        'admin.product-knowledge.gallery',
 
         'admin.customer.index',
         'admin.customer.data',
@@ -149,6 +157,10 @@ return [
         'admin.product.index',
         'admin.product.data',
         'admin.product.detail',
+
+        'admin.product-knowledge.index',
+        'admin.product-knowledge.data',
+        'admin.product-knowledge.gallery',
 
         'admin.customer.index',
         'admin.customer.data',

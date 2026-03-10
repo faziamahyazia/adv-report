@@ -314,6 +314,20 @@ onMounted(() => {
             </q-item-section>
           </q-item>
           <q-item
+            v-if="$can('admin.product-knowledge.index')"
+            clickable
+            v-ripple
+            :active="$page.url.startsWith('/admin/product-knowledge')"
+            @click="router.get(route('admin.product-knowledge.index'))"
+          >
+            <q-item-section avatar>
+              <q-icon name="photo_library" />
+            </q-item-section>
+            <q-item-section>
+              <q-item-label>Product Knowledge</q-item-label>
+            </q-item-section>
+          </q-item>
+          <q-item
             v-if="$can('admin.activity-type.index')"
             clickable
             v-ripple
