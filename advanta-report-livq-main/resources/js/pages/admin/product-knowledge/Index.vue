@@ -52,30 +52,35 @@ const canEdit = page.props.auth?.user?.role === "admin";
     <template #title>Product Knowledge</template>
     <template #header>
       <q-toolbar class="filter-bar">
-        <q-input
-          v-model="filter.search"
-          dense
-          outlined
-          placeholder="Cari varietas..."
-          clearable
-          bg-color="white"
-          style="max-width:240px"
-          class="q-mr-sm"
-        >
-          <template #prepend><q-icon name="search" size="18px" /></template>
-        </q-input>
-        <q-select
-          v-model="filter.category_id"
-          :options="categoryOptions"
-          option-value="value"
-          option-label="label"
-          emit-value
-          map-options
-          dense
-          outlined
-          bg-color="white"
-          style="min-width:130px; max-width:180px"
-        />
+        <div class="row q-col-gutter-xs items-center q-pa-sm full-width">
+          <div class="col-auto">
+            <q-input
+              v-model="filter.search"
+              dense
+              outlined
+              placeholder="Cari varietas..."
+              clearable
+              bg-color="white"
+              style="max-width:240px"
+            >
+              <template #prepend><q-icon name="search" size="18px" /></template>
+            </q-input>
+          </div>
+          <div class="col-auto">
+            <q-select
+              v-model="filter.category_id"
+              :options="categoryOptions"
+              option-value="value"
+              option-label="label"
+              emit-value
+              map-options
+              dense
+              outlined
+              bg-color="white"
+              style="min-width:130px; max-width:180px"
+            />
+          </div>
+        </div>
       </q-toolbar>
     </template>
 
