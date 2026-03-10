@@ -175,7 +175,7 @@ class DashboardController extends Controller
             ->get(['id', 'name']);
         $bsUserIds = $bsUsers->pluck('id')->toArray();
 
-        $activityTypes = ActivityType::where('active', true)->orderBy('name')->get(['id', 'name']);
+        $activityTypes = ActivityType::where('active', true)->orderBy('name')->get(['id', 'name', 'weight']);
         $typeIds = $activityTypes->pluck('id')->toArray();
 
         if ($viewType === 'month') {
@@ -265,7 +265,7 @@ class DashboardController extends Controller
                 ->where('year', $year)
                 ->where('quarter', $quarter)
                 ->get();
-            $summary = $this->buildKpiSummary($bsUsers, $typeIds, $rows, $qTargets);
+            $summary = $this->buildKpiSummary($bsUsers, $typeIds, $rows, $qTargets, $activityTypes);
 
         } else { // fiscal_year
             $start = Carbon::createFromDate($year, 4, 1)->startOfDay();
@@ -322,7 +322,7 @@ class DashboardController extends Controller
                 ->whereIn('user_id', $bsUserIds)
                 ->where('year', $year)
                 ->get();
-            $summary = $this->buildKpiSummary($bsUsers, $typeIds, $rows, $fyTargets);
+            $summary = $this->buildKpiSummary($bsUsers, $typeIds, $rows, $fyTargets, $activityTypes);
         }
 
         return inertia('admin/dashboard/Index', [
@@ -340,7 +340,7 @@ class DashboardController extends Controller
         ]);
     }
 
-    private function buildKpiSummary($bsUsers, array $typeIds, array $rows, $targets): array
+    private function buildKpiSummary($bsUsers, array $typeIds, array $rows, $targets, $activityTypes): array
     {
         // Build target map: user_id -> type_id -> total_target_qty
         $targetMap = [];
@@ -352,6 +352,9 @@ class DashboardController extends Controller
                 $targetMap[$uid][$tid] = ($targetMap[$uid][$tid] ?? 0) + $qty;
             }
         }
+
+        // Weight map: type_id -> weight
+        $weightMap = $activityTypes->pluck('weight', 'id')->map(fn($w) => (float)$w)->toArray();
 
         $summaryRows = [];
         $totTypeAct  = array_fill_keys($typeIds, 0);
@@ -383,6 +386,9 @@ class DashboardController extends Controller
             $ta = $rowData['total'] ?? 0;
             $tt = array_sum($typeTgt);
 
+            // Weighted KPI: normalize by sum of weights for types that have targets
+            $kpi = $this->calcWeightedKpi($typeIds, $typeAct, $typeTgt, $weightMap);
+
             foreach ($typeIds as $tid) {
                 $totTypeAct[$tid] += $typeAct[$tid];
                 $totTypeTgt[$tid] += $typeTgt[$tid];
@@ -396,7 +402,7 @@ class DashboardController extends Controller
                 'type_targets' => $typeTgt,
                 'total_actual' => $ta,
                 'total_target' => $tt,
-                'kpi'          => $tt > 0 ? round($ta / $tt * 100) : null,
+                'kpi'          => $kpi,
             ];
         }
 
@@ -407,9 +413,32 @@ class DashboardController extends Controller
                 'type_targets' => $totTypeTgt,
                 'total_actual' => $totActual,
                 'total_target' => $totTarget,
-                'kpi'          => $totTarget > 0 ? round($totActual / $totTarget * 100) : null,
+                'kpi'          => $this->calcWeightedKpi($typeIds, $totTypeAct, $totTypeTgt, $weightMap),
             ],
         ];
+    }
+
+    /**
+     * KPI = Σ(min(aktual/target, 1) × bobot) / Σ(bobot tipe yang punya target) × 100
+     * Hanya tipe yang ada targetnya yang dimasukkan ke penyebut.
+     */
+    private function calcWeightedKpi(array $typeIds, array $typeAct, array $typeTgt, array $weightMap): ?int
+    {
+        $weightedProgress = 0.0;
+        $relevantWeight   = 0.0;
+
+        foreach ($typeIds as $tid) {
+            $target = $typeTgt[$tid] ?? 0;
+            $weight = $weightMap[$tid] ?? 0;
+
+            if ($target > 0 && $weight > 0) {
+                $actual = $typeAct[$tid] ?? 0;
+                $weightedProgress += min($actual / $target, 1.0) * $weight;
+                $relevantWeight   += $weight;
+            }
+        }
+
+        return $relevantWeight > 0 ? (int) round($weightedProgress / $relevantWeight * 100) : null;
     }
 
     private function getQuarterFromMonth(int $month): int
