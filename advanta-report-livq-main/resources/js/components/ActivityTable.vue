@@ -1,27 +1,32 @@
 <template>
-  <table class="q-table q-table--flat dense-table">
-    <thead>
-      <tr>
-        <th>Kegiatan</th>
-        <th v-if="showWeight">Bobot</th>
-        <th>Target</th>
-        <th>Plan</th>
-        <th>Realisasi</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr v-for="type in types" :key="type.id">
-        <td>{{ type.name }}</td>
-        <td v-if="showWeight">{{ type.weight ?? "-" }}</td>
-        <td>{{ getQuarter(targets, type.id) }}</td>
-        <td>{{ getQuarter(plans, type.id) }}</td>
-        <td>{{ getQuarter(activities, type.id) }}</td>
-      </tr>
-    </tbody>
-  </table>
+  <div class="at-wrap">
+    <table class="q-table q-table--flat dense-table">
+      <thead>
+        <tr>
+          <th>Kegiatan</th>
+          <th v-if="showWeight">Bobot</th>
+          <th>Target</th>
+          <th>Plan</th>
+          <th>Realisasi</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="type in types" :key="type.id">
+          <td>{{ $q.screen.lt.sm ? shortTypeName(type.name) : type.name }}</td>
+          <td v-if="showWeight">{{ type.weight ?? "-" }}</td>
+          <td>{{ getQuarter(targets, type.id) }}</td>
+          <td>{{ getQuarter(plans, type.id) }}</td>
+          <td>{{ getQuarter(activities, type.id) }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
 </template>
 
 <script setup>
+import { useQuasar } from "quasar";
+
+const $q = useQuasar();
 const props = defineProps({
   types: Array,
   targets: Array,
@@ -60,8 +65,17 @@ function getQuarter(source, typeId) {
 
   return "-";
 }
+
+function shortTypeName(name) {
+  if (!name) return "";
+  return name.length > 12 ? name.slice(0, 12) : name;
+}
 </script>
 <style scoped>
+.at-wrap {
+  overflow-x: auto;
+  width: 100%;
+}
 .dense-table {
   font-size: 0.8rem;
   width: 100%;

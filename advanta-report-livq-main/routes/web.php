@@ -101,6 +101,7 @@ Route::middleware([Auth::class])->group(function () {
                 Route::get('{id}/photo-editor', [ProductKnowledgeController::class, 'photoEditor'])->name('admin.product-knowledge.photo-editor');
                 Route::post('{id}/photo-save', [ProductKnowledgeController::class, 'photoSave'])->name('admin.product-knowledge.photo-save');
                 Route::post('photo-delete/{photoId}', [ProductKnowledgeController::class, 'photoDelete'])->name('admin.product-knowledge.photo-delete');
+                Route::post('photo-set-thumbnail/{photoId}', [ProductKnowledgeController::class, 'photoSetThumbnail'])->name('admin.product-knowledge.photo-set-thumbnail');
             });
 
             Route::prefix('customers')->group(function () {

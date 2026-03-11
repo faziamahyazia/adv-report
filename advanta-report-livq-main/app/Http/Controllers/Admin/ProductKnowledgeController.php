@@ -58,40 +58,43 @@ class ProductKnowledgeController extends Controller
         $product = Product::findOrFail($id);
 
         $request->validate([
-            'image'   => 'required|image|max:5120',
-            'caption' => 'nullable|string|max:255',
+            'images'   => 'required|array|max:10',
+            'images.*' => 'required|image|max:5120',
         ]);
 
-        $file      = $request->file('image');
-        $filename  = 'pk_' . time() . '_' . $file->getClientOriginalName();
-        $imagePath = 'uploads/' . $filename;
-
-        // Resize to max 1024px on longest side
-        $manager = new ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
-        $image   = $manager->read($file);
-        $width   = $image->width();
-        $height  = $image->height();
-        $ratio   = max($width / 1024, $height / 1024);
-        if ($ratio > 1) {
-            $newWidth  = (int) round($width / $ratio);
-            $newHeight = (int) round($height / $ratio);
-            $image->resize($newWidth, $newHeight, function ($constraint) {
-                $constraint->aspectRatio();
-                $constraint->upsize();
-            });
-        }
-        $image->save(public_path($imagePath));
-
+        $manager  = new ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
         $nextSort = (ProductPhoto::where('product_id', $id)->max('sort_order') ?? 0) + 1;
 
-        ProductPhoto::create([
-            'product_id' => $product->id,
-            'image_path' => $imagePath,
-            'caption'    => $request->input('caption'),
-            'sort_order' => $nextSort,
-        ]);
+        foreach ($request->file('images') as $file) {
+            $ext       = $file->getClientOriginalExtension() ?: 'jpg';
+            $filename  = 'pk_' . uniqid('', true) . '.' . $ext;
+            $imagePath = 'uploads/' . $filename;
 
-        return back()->with('success', 'Foto berhasil diunggah.');
+            // Resize to max 1024px on longest side
+            $image  = $manager->read($file);
+            $width  = $image->width();
+            $height = $image->height();
+            $ratio  = max($width / 1024, $height / 1024);
+            if ($ratio > 1) {
+                $newWidth  = (int) round($width / $ratio);
+                $newHeight = (int) round($height / $ratio);
+                $image->resize($newWidth, $newHeight, function ($constraint) {
+                    $constraint->aspectRatio();
+                    $constraint->upsize();
+                });
+            }
+            $image->save(public_path($imagePath));
+
+            ProductPhoto::create([
+                'product_id' => $product->id,
+                'image_path' => $imagePath,
+                'caption'    => null,
+                'sort_order' => $nextSort++,
+            ]);
+        }
+
+        $count = count($request->file('images'));
+        return response()->json(['message' => "$count foto berhasil diunggah.", 'count' => $count]);
     }
 
     public function photoDelete($photoId)
@@ -104,5 +107,26 @@ class ProductKnowledgeController extends Controller
         $photo->delete();
 
         return response()->json(['message' => 'Foto telah dihapus.']);
+    }
+
+    public function photoSetThumbnail($photoId)
+    {
+        $photo = ProductPhoto::findOrFail($photoId);
+        $productId = $photo->product_id;
+
+        // Set chosen photo as sort_order = 0, re-order others from 1
+        $others = ProductPhoto::where('product_id', $productId)
+            ->where('id', '!=', $photoId)
+            ->orderBy('sort_order')
+            ->get();
+
+        $photo->update(['sort_order' => 0]);
+
+        $i = 1;
+        foreach ($others as $p) {
+            $p->update(['sort_order' => $i++]);
+        }
+
+        return response()->json(['message' => 'Thumbnail berhasil diubah.']);
     }
 }
