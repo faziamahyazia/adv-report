@@ -37,8 +37,9 @@ const CHART_COLORS = ["#1976D2", "#388E3C", "#F57C00", "#7B1FA2", "#D32F2F", "#0
 
 const barChartOption = computed(() => {
   if (!rows.value.length || !activityTypes.value.length) return {};
+  const isMobile = $q.screen.lt.sm;
   const bsNames = rows.value.map((r) =>
-    $q.screen.lt.sm ? shortName(r.name) : r.name
+    isMobile ? shortName(r.name) : r.name
   );
   const series = activityTypes.value.map((t, i) => ({
     name: t.name,
@@ -49,7 +50,7 @@ const barChartOption = computed(() => {
     ),
     itemStyle: { color: CHART_COLORS[i % CHART_COLORS.length] },
     label: {
-      show: true,
+      show: !isMobile,
       position: "inside",
       fontSize: 10,
       color: "#fff",
@@ -65,19 +66,19 @@ const barChartOption = computed(() => {
     },
     legend: {
       top: 4,
-      textStyle: { fontSize: 11 },
-      itemWidth: 12,
-      itemHeight: 12,
+      textStyle: { fontSize: isMobile ? 10 : 11 },
+      itemWidth: isMobile ? 10 : 12,
+      itemHeight: isMobile ? 10 : 12,
       data: activityTypes.value.map((t) => t.name),
     },
-    grid: { left: 8, right: 8, bottom: 8, top: 36, containLabel: true },
+    grid: { left: 8, right: 8, bottom: 8, top: isMobile ? 48 : 36, containLabel: true },
     xAxis: {
       type: "category",
       data: bsNames,
       axisLabel: {
-        fontSize: 11,
+        fontSize: isMobile ? 10 : 11,
         interval: 0,
-        rotate: bsNames.length > 5 ? 20 : 0,
+        rotate: bsNames.length > (isMobile ? 4 : 6) ? (isMobile ? 30 : 20) : 0,
       },
     },
     yAxis: {
@@ -241,7 +242,7 @@ function shortTypeName(name) {
               v-if="barChartOption.series"
               :option="barChartOption"
               autoresize
-              style="height:220px"
+              class="agro-chart"
             />
           </div>
         </div>
@@ -253,7 +254,7 @@ function shortTypeName(name) {
               <q-icon name="donut_large" size="14px" class="q-mr-xs" />
               Distribusi Jenis
             </div>
-            <ECharts :option="donutOption" autoresize style="height:220px" />
+            <ECharts :option="donutOption" autoresize class="agro-chart" />
           </div>
         </div>
       </div>
@@ -458,11 +459,17 @@ function shortTypeName(name) {
 }
 .kpi-row {
   display: grid;
-  grid-template-columns: 90px 1fr 44px 52px;
+  grid-template-columns: 80px 1fr 40px 48px;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding: 5px 0;
   border-bottom: 1px solid #f0f0f0;
+}
+@media (min-width: 600px) {
+  .kpi-row {
+    grid-template-columns: 110px 1fr 50px 60px;
+    gap: 8px;
+  }
 }
 .kpi-row:last-child { border-bottom: none; }
 .kpi-row--total {
@@ -482,7 +489,7 @@ function shortTypeName(name) {
   font-size: 11px;
   font-weight: 700;
   border-radius: 4px;
-  padding: 2px 4px;
+  padding: 2px 3px;
 }
 .kpi-row__sub {
   font-size: 10px;
@@ -525,4 +532,19 @@ function shortTypeName(name) {
 }
 .period-total-row td { background: #f9fbe7; border-top: 1px solid #c5cae9; }
 .footer-row td { background: #fce4ec; border-top: 2px solid #e57373; font-weight: 700; }
+
+/* ── Responsive chart height ───────────────────────────────────────────────── */
+.agro-chart {
+  height: 200px;
+}
+@media (min-width: 600px) {
+  .agro-chart {
+    height: 230px;
+  }
+}
+@media (min-width: 1024px) {
+  .agro-chart {
+    height: 260px;
+  }
+}
 </style>

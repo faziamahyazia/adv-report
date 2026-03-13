@@ -14,13 +14,13 @@ import {
 
 const selectedMonth = getQueryParams().month || current_month();
 const monthIndex = getMonthIndexInQuarter(selectedMonth);
-const monthyProgress = calculateMonthlyActivityProgress(
+const monthlyProgress = calculateMonthlyActivityProgress(
   usePage().props.data.types,
   monthIndex,
   usePage().props.data.targets,
   usePage().props.data.activities
 );
-const querterProgress = calculateQuarterActivityProgress(
+const quarterProgress = calculateQuarterActivityProgress(
   usePage().props.data.types,
   usePage().props.data.targets,
   usePage().props.data.activities
@@ -31,16 +31,15 @@ const querterProgress = calculateQuarterActivityProgress(
   <div class="row">
     <q-card class="bg-transparent no-shadow no-border col" bordered>
       <q-card-section class="q-pa-none">
-        <div class="row q-py-md">
+        <div class="row q-py-sm">
           <div class="col-12">
-            <div class="q-my-sm text-bold">
+            <div class="progress-label text-bold">
               Progress Bulanan:
-              {{ formatNumber(monthyProgress, "id-ID", 2) }}
-              %
+              {{ formatNumber(monthlyProgress, "id-ID", 2) }}%
             </div>
-            <div class="q-my-sm">
+            <div class="q-mb-sm">
               <q-linear-progress
-                :value="monthyProgress / 100"
+                :value="monthlyProgress / 100"
                 size="10px"
                 color="primary"
                 class="q-mt-xs"
@@ -66,16 +65,15 @@ const querterProgress = calculateQuarterActivityProgress(
             </template>
           </div>
         </div>
-        <div class="row q-py-md">
+        <div class="row q-py-sm q-mt-sm">
           <div class="col-12">
-            <div class="q-my-sm text-bold">
+            <div class="progress-label text-bold">
               Progress Kwartal:
-              {{ formatNumber(querterProgress, "id-ID", 2 ) }}
-              %
+              {{ formatNumber(quarterProgress, "id-ID", 2) }}%
             </div>
-            <div class="q-my-sm">
+            <div class="q-mb-sm">
               <q-linear-progress
-                :value="querterProgress / 100"
+                :value="quarterProgress / 100"
                 size="10px"
                 color="primary"
                 class="q-mt-xs"
@@ -105,19 +103,13 @@ const querterProgress = calculateQuarterActivityProgress(
   </div>
 </template>
 <style scoped>
-.dense-table {
-  font-size: 0.8rem;
-  width: 100%;
-  margin: 5px 0;
-  border-collapse: collapse;
+.progress-label {
+  font-size: 13px;
+  margin-bottom: 4px;
 }
-.dense-table th,
-.dense-table td {
-  padding: 2px 8px !important;
-  height: auto !important;
-  border: 1px solid #e0e0e0 !important;
-}
-.dense-table td:not(:nth-child(1)) {
-  text-align: center !important;
+@media (min-width: 600px) {
+  .progress-label {
+    font-size: 14px;
+  }
 }
 </style>
