@@ -71,7 +71,7 @@ const onFilterChange = () => {
 
     <template #header v-if="showFilter">
       <q-toolbar class="filter-bar">
-        <div class="row q-col-gutter-xs items-center q-pa-sm full-width">
+        <div class="row q-col-gutter-xs items-center q-pa-xs full-width">
 
           <!-- Tab view type — agronomist only -->
           <div v-if="userRole === 'agronomist'" class="col-12 q-pb-xs">
@@ -90,48 +90,55 @@ const onFilterChange = () => {
           </div>
 
           <!-- Tahun -->
-          <q-select
-            class="custom-select col-xs-6 col-sm-4"
-            style="min-width: 120px"
-            v-model="filter.year"
-            :options="years"
-            label="Tahun"
-            dense
-            emit-value
-            map-options
-            outlined
-            @update:model-value="onFilterChange"
-          />
+          <div class="col-6 col-sm-4">
+            <q-select
+              class="custom-select"
+              v-model="filter.year"
+              :options="years"
+              label="Tahun"
+              dense
+              emit-value
+              map-options
+              outlined
+              @update:model-value="onFilterChange"
+            />
+          </div>
 
           <!-- Bulan — BS selalu tampil, agronomist hanya mode 'month' -->
-          <q-select
+          <div
             v-if="userRole === 'bs' || (userRole === 'agronomist' && filter.view_type === 'month')"
-            class="custom-select col-xs-6 col-sm-4"
-            style="min-width: 120px"
-            v-model="filter.month"
-            :options="months"
-            label="Bulan"
-            dense
-            emit-value
-            map-options
-            outlined
-            @update:model-value="onFilterChange"
-          />
+            class="col-6 col-sm-4"
+          >
+            <q-select
+              class="custom-select"
+              v-model="filter.month"
+              :options="months"
+              label="Bulan"
+              dense
+              emit-value
+              map-options
+              outlined
+              @update:model-value="onFilterChange"
+            />
+          </div>
 
           <!-- Kwartal — agronomist mode 'quarter' -->
-          <q-select
+          <div
             v-if="userRole === 'agronomist' && filter.view_type === 'quarter'"
-            class="custom-select col-xs-6 col-sm-4"
-            style="min-width: 120px"
-            v-model="filter.quarter"
-            :options="quarterOptions"
-            label="Kwartal"
-            dense
-            emit-value
-            map-options
-            outlined
-            @update:model-value="onFilterChange"
-          />
+            class="col-6 col-sm-4"
+          >
+            <q-select
+              class="custom-select"
+              v-model="filter.quarter"
+              :options="quarterOptions"
+              label="Kwartal"
+              dense
+              emit-value
+              map-options
+              outlined
+              @update:model-value="onFilterChange"
+            />
+          </div>
         </div>
       </q-toolbar>
     </template>
