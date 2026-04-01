@@ -241,6 +241,37 @@ function getPerTreeYield(item) {
   return qty / estimatedPlants;
 }
 
+function getPhotoUrl(item) {
+  const explicitUrl = String(item?.photo_url || "").trim();
+  if (explicitUrl) {
+    return explicitUrl;
+  }
+
+  const rawPath = String(item?.photo_path || "").trim();
+  if (!rawPath) {
+    return null;
+  }
+
+  if (rawPath.startsWith("http://") || rawPath.startsWith("https://")) {
+    return rawPath;
+  }
+
+  let normalized = rawPath.replace(/^\/+/, "");
+  if (normalized.startsWith("public/")) {
+    normalized = normalized.slice(7);
+  }
+
+  return `/${normalized}`;
+}
+
+function getHarvestCycleCount(item) {
+  const cycles = Array.isArray(item?.harvest_cycles) ? item.harvest_cycles : [];
+  if (cycles.length > 0) {
+    return cycles.length;
+  }
+  return item?.is_multiple_harvest ? 1 : 1;
+}
+
 function altitudeZone(value) {
   const altitude = Number(value);
   if (!Number.isFinite(altitude) || altitude < 0) {
@@ -865,8 +896,8 @@ const isBs = page.props.auth?.user?.role === "bs";
                 <div class="harvest-entry-body">
                   <div class="harvest-thumb-wrap compact">
                     <q-img
-                      v-if="item.photo_path"
-                      :src="'/' + item.photo_path"
+                      v-if="getPhotoUrl(item)"
+                      :src="getPhotoUrl(item)"
                       ratio="4/3"
                       class="harvest-thumb compact"
                     />
@@ -906,6 +937,10 @@ const isBs = page.props.auth?.user?.role === "bs";
                         <div class="harvest-stat-value">
                           {{ getPerTreeYield(item) ? `${formatNumber(getPerTreeYield(item))} ${item.harvest_unit || 'kg'}/pohon` : '-' }}
                         </div>
+                      </div>
+                      <div class="harvest-stat-item compact">
+                        <div class="harvest-stat-label">Total Kali Panen</div>
+                        <div class="harvest-stat-value">{{ getHarvestCycleCount(item) }} kali</div>
                       </div>
                     </div>
 
@@ -948,6 +983,7 @@ const isBs = page.props.auth?.user?.role === "bs";
                     <th class="text-right">Panen</th>
                     <th class="text-right">Hasil / PCS</th>
                     <th class="text-right">Hasil / Pohon</th>
+                    <th class="text-right">Kali Panen</th>
                     <th class="text-left">Zona</th>
                     <th class="text-left">Input</th>
                     <th class="text-right">Aksi</th>
@@ -959,8 +995,8 @@ const isBs = page.props.auth?.user?.role === "bs";
                     <td>
                       <div class="table-thumb-wrap">
                         <q-img
-                          v-if="item.photo_path"
-                          :src="'/' + item.photo_path"
+                          v-if="getPhotoUrl(item)"
+                          :src="getPhotoUrl(item)"
                           ratio="1"
                           class="table-thumb"
                         />
@@ -980,6 +1016,7 @@ const isBs = page.props.auth?.user?.role === "bs";
                     <td class="text-right">
                       {{ getPerTreeYield(item) ? `${formatNumber(getPerTreeYield(item))} ${item.harvest_unit || 'kg'}/pohon` : '-' }}
                     </td>
+                    <td class="text-right">{{ getHarvestCycleCount(item) }}x</td>
                     <td>
                       {{ item.altitude_mdpl !== null && item.altitude_mdpl !== undefined ? altitudeZone(item.altitude_mdpl) : '-' }}
                     </td>
@@ -1473,6 +1510,12 @@ const isBs = page.props.auth?.user?.role === "bs";
                       <div class="detail-metric-value">{{ selectedHarvestMetrics.totalPcs ? `${formatNumber(selectedHarvestMetrics.totalPcs, 0)} pcs` : '-' }}</div>
                     </div>
                   </div>
+                  <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+                    <div class="detail-metric-card">
+                      <div class="detail-metric-label">Total Kali Panen</div>
+                      <div class="detail-metric-value">{{ getHarvestCycleCount(selectedHarvest) }} kali</div>
+                    </div>
+                  </div>
                 </div>
               </q-card-section>
             </q-card>
@@ -1480,11 +1523,11 @@ const isBs = page.props.auth?.user?.role === "bs";
             <div class="row q-col-gutter-md detail-body-grid">
               <div
                 class="col-12"
-                v-if="selectedHarvest.photo_path"
+                v-if="getPhotoUrl(selectedHarvest)"
                 v-show="!$q.screen.lt.md || detailMobileTab === 'extra'"
               >
                 <q-card flat bordered class="q-mb-sm">
-                  <q-img :src="'/' + selectedHarvest.photo_path" ratio="21/7" class="detail-photo-banner" />
+                  <q-img :src="getPhotoUrl(selectedHarvest)" ratio="21/7" class="detail-photo-banner" />
                 </q-card>
               </div>
               <div class="col-12 col-md-6" v-show="!$q.screen.lt.md || detailMobileTab === 'main'">
@@ -1517,8 +1560,8 @@ const isBs = page.props.auth?.user?.role === "bs";
                       <div class="detail-key">Foto Thumbnail</div>
                       <div class="detail-val">
                         <q-img
-                          v-if="selectedHarvest.photo_path"
-                          :src="'/' + selectedHarvest.photo_path"
+                          v-if="getPhotoUrl(selectedHarvest)"
+                          :src="getPhotoUrl(selectedHarvest)"
                           ratio="4/3"
                           class="detail-inline-thumb"
                         />

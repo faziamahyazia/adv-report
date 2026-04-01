@@ -220,6 +220,16 @@ class ProductKnowledgeController extends Controller
                 || ($user->role === User::Role_BS && (int) $item->created_by_uid === (int) $user->id);
 
             $arr = $item->toArray();
+            $rawPhotoPath = trim((string) ($arr['photo_path'] ?? ''));
+            if ($rawPhotoPath !== '') {
+                $normalizedPhotoPath = ltrim($rawPhotoPath, '/');
+                if (str_starts_with($normalizedPhotoPath, 'public/')) {
+                    $normalizedPhotoPath = substr($normalizedPhotoPath, 7);
+                }
+                $arr['photo_url'] = asset($normalizedPhotoPath);
+            } else {
+                $arr['photo_url'] = null;
+            }
             $arr['can_edit'] = $canManage;
             $arr['can_delete'] = $canManage;
 
