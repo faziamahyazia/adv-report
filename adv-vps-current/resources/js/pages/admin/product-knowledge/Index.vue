@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, watch, onMounted } from "vue";
+import { ref, reactive, watch, onMounted, computed } from "vue";
 import { router, usePage } from "@inertiajs/vue3";
 import AuthenticatedLayout from "@/layouts/AuthenticatedLayout.vue";
 import axios from "axios";
@@ -113,6 +113,80 @@ function altitudeZone(value) {
   }
   return "Highland";
 }
+
+function toZoneKey(value) {
+  const label = altitudeZone(value);
+  if (label === "Lowland") return "lowland";
+  if (label === "Middleland") return "middleland";
+  if (label === "Highland") return "highland";
+  return "unknown";
+}
+
+function collectTopPhrases(texts = [], maxItems = 5) {
+  const counts = new Map();
+
+  texts
+    .filter(Boolean)
+    .forEach((raw) => {
+      String(raw)
+        .split(/[,.;\n]+/g)
+        .map((part) => part.trim())
+        .filter((part) => part.length >= 4)
+        .forEach((part) => {
+          const key = part.toLowerCase();
+          counts.set(key, (counts.get(key) || 0) + 1);
+        });
+    });
+
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, maxItems)
+    .map(([label, count]) => ({
+      label: label.charAt(0).toUpperCase() + label.slice(1),
+      count,
+    }));
+}
+
+const harvestAnalysis = computed(() => {
+  const items = harvestItems.value || [];
+  const zoneStats = {
+    lowland: { label: "Lowland", range: "0-400 mdpl", count: 0, totalHarvest: 0 },
+    middleland: { label: "Middleland", range: "401-700 mdpl", count: 0, totalHarvest: 0 },
+    highland: { label: "Highland", range: ">700 mdpl", count: 0, totalHarvest: 0 },
+  };
+
+  let totalHarvest = 0;
+
+  items.forEach((item) => {
+    const qty = Number(item?.harvest_quantity || 0);
+    totalHarvest += qty;
+
+    const zoneKey = toZoneKey(item?.altitude_mdpl);
+    if (zoneStats[zoneKey]) {
+      zoneStats[zoneKey].count += 1;
+      zoneStats[zoneKey].totalHarvest += qty;
+    }
+  });
+
+  const zoneCards = Object.values(zoneStats).map((zone) => ({
+    ...zone,
+    avgHarvest: zone.count > 0 ? zone.totalHarvest / zone.count : 0,
+  }));
+
+  const strengthInsights = collectTopPhrases(items.map((item) => item?.strengths));
+  const weaknessInsights = collectTopPhrases(items.map((item) => item?.weaknesses));
+
+  const dominantZone = [...zoneCards].sort((a, b) => b.totalHarvest - a.totalHarvest)[0] || null;
+
+  return {
+    totalRecords: items.length,
+    totalHarvest,
+    zoneCards,
+    dominantZone,
+    strengthInsights,
+    weaknessInsights,
+  };
+});
 
 onMounted(async () => {
   await Promise.all([fetchProducts(), fetchHarvests()]);
@@ -303,8 +377,93 @@ const isBs = page.props.auth?.user?.role === "bs";
         <div class="text-subtitle2 q-mt-sm text-grey-6">Belum ada data hasil panen.</div>
       </div>
 
-      <div v-else class="row q-col-gutter-sm">
-        <div v-for="item in harvestItems" :key="item.id" class="col-12 col-md-6 col-lg-4">
+      <div v-else>
+        <q-card flat bordered class="q-mb-md analysis-card">
+          <q-card-section>
+            <div class="text-subtitle1 text-weight-medium">Summary Analisis Hasil Panen</div>
+            <div class="text-caption text-grey-7 q-mt-xs">
+              Klasifikasi zona: Lowland 0-400 mdpl, Middleland 401-700 mdpl, Highland &gt;700 mdpl.
+            </div>
+
+            <div class="row q-col-gutter-sm q-mt-sm">
+              <div class="col-12 col-sm-6 col-lg-3">
+                <div class="analysis-metric">
+                  <div class="text-caption text-grey-7">Total Data</div>
+                  <div class="text-h6 text-weight-bold">{{ harvestAnalysis.totalRecords }}</div>
+                </div>
+              </div>
+              <div class="col-12 col-sm-6 col-lg-3">
+                <div class="analysis-metric">
+                  <div class="text-caption text-grey-7">Total Hasil Panen</div>
+                  <div class="text-h6 text-weight-bold">{{ formatNumber(harvestAnalysis.totalHarvest, 2) }} kg</div>
+                </div>
+              </div>
+              <div class="col-12 col-sm-6 col-lg-6">
+                <div class="analysis-metric">
+                  <div class="text-caption text-grey-7">Zona Dominan</div>
+                  <div class="text-h6 text-weight-bold">
+                    {{ harvestAnalysis.dominantZone?.label || '-' }}
+                    <span class="text-body2 text-weight-regular" v-if="harvestAnalysis.dominantZone">
+                      ({{ formatNumber(harvestAnalysis.dominantZone.totalHarvest, 2) }} kg)
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="row q-col-gutter-sm q-mt-sm">
+              <div
+                v-for="zone in harvestAnalysis.zoneCards"
+                :key="zone.label"
+                class="col-12 col-md-4"
+              >
+                <div class="zone-card">
+                  <div class="text-subtitle2 text-weight-medium">{{ zone.label }}</div>
+                  <div class="text-caption text-grey-7">{{ zone.range }}</div>
+                  <div class="q-mt-xs text-body2">Data: <b>{{ zone.count }}</b></div>
+                  <div class="text-body2">Total: <b>{{ formatNumber(zone.totalHarvest, 2) }} kg</b></div>
+                  <div class="text-body2">Rata-rata: <b>{{ formatNumber(zone.avgHarvest, 2) }} kg/data</b></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="row q-col-gutter-sm q-mt-sm">
+              <div class="col-12 col-md-6">
+                <div class="insight-box">
+                  <div class="text-subtitle2 text-weight-medium">Top Kekuatan</div>
+                  <div v-if="harvestAnalysis.strengthInsights.length" class="q-mt-xs">
+                    <div
+                      v-for="item in harvestAnalysis.strengthInsights"
+                      :key="`strength-${item.label}`"
+                      class="text-body2"
+                    >
+                      - {{ item.label }} <span class="text-grey-7">({{ item.count }}x)</span>
+                    </div>
+                  </div>
+                  <div v-else class="text-caption text-grey-7 q-mt-xs">Belum ada data kekuatan untuk dianalisis.</div>
+                </div>
+              </div>
+              <div class="col-12 col-md-6">
+                <div class="insight-box">
+                  <div class="text-subtitle2 text-weight-medium">Top Kelemahan</div>
+                  <div v-if="harvestAnalysis.weaknessInsights.length" class="q-mt-xs">
+                    <div
+                      v-for="item in harvestAnalysis.weaknessInsights"
+                      :key="`weakness-${item.label}`"
+                      class="text-body2"
+                    >
+                      - {{ item.label }} <span class="text-grey-7">({{ item.count }}x)</span>
+                    </div>
+                  </div>
+                  <div v-else class="text-caption text-grey-7 q-mt-xs">Belum ada data kelemahan untuk dianalisis.</div>
+                </div>
+              </div>
+            </div>
+          </q-card-section>
+        </q-card>
+
+        <div class="row q-col-gutter-sm">
+          <div v-for="item in harvestItems" :key="item.id" class="col-12 col-md-6 col-lg-4">
           <q-card flat bordered class="harvest-card">
             <q-img
               v-if="item.photo_path"
@@ -374,6 +533,7 @@ const isBs = page.props.auth?.user?.role === "bs";
             </q-card-section>
           </q-card>
         </div>
+      </div>
       </div>
     </div>
   </AuthenticatedLayout>
@@ -473,5 +633,33 @@ const isBs = page.props.auth?.user?.role === "bs";
 
 .harvest-photo {
   background: #f5f5f5;
+}
+
+.analysis-card {
+  background: #f8fbff;
+}
+
+.analysis-metric {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 10px 12px;
+  height: 100%;
+}
+
+.zone-card {
+  background: #ffffff;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  padding: 10px 12px;
+  height: 100%;
+}
+
+.insight-box {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 10px 12px;
+  min-height: 120px;
 }
 </style>
