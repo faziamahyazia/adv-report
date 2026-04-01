@@ -396,6 +396,11 @@ function openHarvestDetail(item) {
   harvestDetailDialog.value = true;
 }
 
+function openHarvestEdit(item) {
+  openHarvestDetail(item);
+  editMode.value = true;
+}
+
 function resetEditForm(item) {
   editForm.product_id = item?.product_id ?? null;
   editForm.demo_plot_id = item?.demo_plot_id ?? null;
@@ -696,66 +701,77 @@ const isBs = page.props.auth?.user?.role === "bs";
                 bordered
                 class="harvest-entry-card"
               >
-                <div class="harvest-thumb-wrap">
-                  <q-img
-                    v-if="item.photo_path"
-                    :src="'/' + item.photo_path"
-                    ratio="16/9"
-                    class="harvest-thumb"
-                  />
-                  <div v-else class="harvest-no-thumb flex flex-center bg-grey-2">
-                    <q-icon name="agriculture" size="30px" color="grey-6" />
+                <div class="harvest-entry-body">
+                  <div class="harvest-thumb-wrap compact">
+                    <q-img
+                      v-if="item.photo_path"
+                      :src="'/' + item.photo_path"
+                      ratio="4/3"
+                      class="harvest-thumb compact"
+                    />
+                    <div v-else class="harvest-no-thumb compact flex flex-center bg-grey-2">
+                      <q-icon name="agriculture" size="22px" color="grey-6" />
+                    </div>
+
+                    <div class="harvest-tag-row compact">
+                      <span class="harvest-tag zone-tag">
+                        {{ item.altitude_mdpl !== null && item.altitude_mdpl !== undefined ? altitudeZone(item.altitude_mdpl) : 'Zona -' }}
+                      </span>
+                      <span v-if="item.is_multiple_harvest" class="harvest-tag cycle-tag">Multi Panen</span>
+                    </div>
                   </div>
 
-                  <div class="harvest-tag-row">
-                    <span class="harvest-tag zone-tag">
-                      {{ item.altitude_mdpl !== null && item.altitude_mdpl !== undefined ? altitudeZone(item.altitude_mdpl) : 'Zona -' }}
-                    </span>
-                    <span v-if="item.is_multiple_harvest" class="harvest-tag cycle-tag">Multi Panen</span>
-                  </div>
-                </div>
+                  <q-card-section class="q-pt-sm harvest-content-section">
+                    <div class="harvest-title">{{ item.product?.name || '-' }}</div>
+                    <div class="harvest-subtitle">{{ item.farmer_name || '-' }}</div>
 
-                <q-card-section class="q-pt-sm">
-                  <div class="harvest-title">{{ item.product?.name || '-' }}</div>
-                  <div class="harvest-subtitle">{{ item.farmer_name || '-' }}</div>
-
-                  <div class="harvest-stat-grid q-mt-sm">
-                    <div class="harvest-stat-item">
-                      <div class="harvest-stat-label">Tanggal</div>
-                      <div class="harvest-stat-value">{{ formatDate(item.harvest_date) }}</div>
-                    </div>
-                    <div class="harvest-stat-item text-right">
-                      <div class="harvest-stat-label">Total Panen</div>
-                      <div class="harvest-stat-value">{{ formatNumber(item.harvest_quantity, 2) }} {{ item.harvest_unit || 'kg' }}</div>
-                    </div>
-                    <div class="harvest-stat-item">
-                      <div class="harvest-stat-label">Luas Lahan</div>
-                      <div class="harvest-stat-value">{{ item.land_area ? `${formatNumber(item.land_area, 2)} m²` : '-' }}</div>
-                    </div>
-                    <div class="harvest-stat-item text-right">
-                      <div class="harvest-stat-label">Produktivitas</div>
-                      <div class="harvest-stat-value">
-                        {{ item.land_area && item.harvest_quantity ? `${formatNumber(item.harvest_quantity / item.land_area, 2)} ${item.harvest_unit || 'kg'}/m²` : '-' }}
+                    <div class="harvest-stat-grid compact q-mt-sm">
+                      <div class="harvest-stat-item compact">
+                        <div class="harvest-stat-label">Tanggal</div>
+                        <div class="harvest-stat-value">{{ formatDate(item.harvest_date) }}</div>
+                      </div>
+                      <div class="harvest-stat-item compact text-right">
+                        <div class="harvest-stat-label">Total Panen</div>
+                        <div class="harvest-stat-value">{{ formatNumber(item.harvest_quantity, 2) }} {{ item.harvest_unit || 'kg' }}</div>
+                      </div>
+                      <div class="harvest-stat-item compact">
+                        <div class="harvest-stat-label">Luas Lahan</div>
+                        <div class="harvest-stat-value">{{ item.land_area ? `${formatNumber(item.land_area, 2)} m²` : '-' }}</div>
+                      </div>
+                      <div class="harvest-stat-item compact text-right">
+                        <div class="harvest-stat-label">Produktivitas</div>
+                        <div class="harvest-stat-value">
+                          {{ item.land_area && item.harvest_quantity ? `${formatNumber(item.harvest_quantity / item.land_area, 2)} ${item.harvest_unit || 'kg'}/m²` : '-' }}
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div class="harvest-meta q-mt-sm">
-                    <div class="meta-line">Input: <b>{{ item.created_by?.name || '-' }}</b></div>
-                    <div class="meta-line">Waktu: {{ formatDateTime(item.created_datetime) }}</div>
-                  </div>
+                    <div class="harvest-meta q-mt-sm">
+                      <div class="meta-line">Input: <b>{{ item.created_by?.name || '-' }}</b></div>
+                      <div class="meta-line">Waktu: {{ formatDateTime(item.created_datetime) }}</div>
+                    </div>
 
-                  <div class="row q-mt-sm justify-end">
-                    <q-btn
-                      dense
-                      unelevated
-                      color="primary"
-                      icon="visibility"
-                      label="Lihat Detail"
-                      @click="openHarvestDetail(item)"
-                    />
-                  </div>
-                </q-card-section>
+                    <div class="row q-mt-sm justify-end q-gutter-sm">
+                      <q-btn
+                        dense
+                        flat
+                        color="primary"
+                        icon="visibility"
+                        label="Detail"
+                        @click="openHarvestDetail(item)"
+                      />
+                      <q-btn
+                        v-if="item.can_edit"
+                        dense
+                        unelevated
+                        color="secondary"
+                        icon="edit"
+                        label="Edit"
+                        @click="openHarvestEdit(item)"
+                      />
+                    </div>
+                  </q-card-section>
+                </div>
               </q-card>
             </div>
           </q-card-section>
@@ -870,8 +886,13 @@ const isBs = page.props.auth?.user?.role === "bs";
 
       <q-dialog v-model="harvestDetailDialog" full-width>
         <q-card class="harvest-detail-card">
-          <q-card-section class="row items-center q-pb-none">
-            <div class="text-h6">Detail Input Hasil Panen BS</div>
+          <q-card-section class="row items-center q-pb-none detail-header">
+            <div>
+              <div class="text-h6">Detail Input Hasil Panen BS</div>
+              <div class="text-caption text-grey-7">
+                Data lapangan, ringkasan analisis, dan aksi edit/hapus.
+              </div>
+            </div>
             <q-space />
             <q-btn
               v-if="selectedHarvest?.can_edit"
@@ -1006,6 +1027,11 @@ const isBs = page.props.auth?.user?.role === "bs";
             </q-card>
 
             <div class="row q-col-gutter-md">
+              <div class="col-12" v-if="selectedHarvest.photo_path">
+                <q-card flat bordered class="q-mb-sm">
+                  <q-img :src="'/' + selectedHarvest.photo_path" ratio="21/7" class="detail-photo-banner" />
+                </q-card>
+              </div>
               <div class="col-12 col-md-6">
                 <q-card flat bordered>
                   <q-card-section>
@@ -1216,8 +1242,20 @@ const isBs = page.props.auth?.user?.role === "bs";
   box-shadow: 0 8px 22px rgba(18, 48, 84, 0.12);
 }
 
+.harvest-entry-body {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 10px;
+}
+
 .harvest-thumb-wrap {
   position: relative;
+}
+
+.harvest-thumb-wrap.compact {
+  margin: 8px;
+  border-radius: 10px;
+  overflow: hidden;
 }
 
 .harvest-thumb,
@@ -1230,9 +1268,18 @@ const isBs = page.props.auth?.user?.role === "bs";
   object-fit: cover;
 }
 
+.harvest-thumb.compact {
+  max-height: 110px;
+}
+
 .harvest-no-thumb {
   aspect-ratio: 16 / 9;
   min-height: 160px;
+}
+
+.harvest-no-thumb.compact {
+  aspect-ratio: 4 / 3;
+  min-height: 110px;
 }
 
 .harvest-tag-row {
@@ -1243,6 +1290,12 @@ const isBs = page.props.auth?.user?.role === "bs";
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+}
+
+.harvest-tag-row.compact {
+  top: 6px;
+  left: 6px;
+  right: 6px;
 }
 
 .harvest-tag {
@@ -1281,11 +1334,19 @@ const isBs = page.props.auth?.user?.role === "bs";
   gap: 8px;
 }
 
+.harvest-stat-grid.compact {
+  gap: 6px;
+}
+
 .harvest-stat-item {
   padding: 8px;
   border-radius: 8px;
   background: #f6f9fd;
   border: 1px solid #e4edf5;
+}
+
+.harvest-stat-item.compact {
+  padding: 6px;
 }
 
 .harvest-stat-label {
@@ -1322,6 +1383,14 @@ const isBs = page.props.auth?.user?.role === "bs";
   width: min(1120px, 96vw);
   max-width: 1120px;
   border-radius: 14px;
+}
+
+.detail-header {
+  border-bottom: 1px solid #e8edf3;
+}
+
+.detail-photo-banner {
+  max-height: 220px;
 }
 
 .detail-summary-shell {
@@ -1372,6 +1441,16 @@ const isBs = page.props.auth?.user?.role === "bs";
 @media (max-width: 640px) {
   .harvest-gallery-grid {
     grid-template-columns: 1fr;
+  }
+
+  .harvest-entry-body {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .harvest-thumb-wrap.compact {
+    margin: 0;
+    border-radius: 0;
   }
 
   .harvest-thumb {
