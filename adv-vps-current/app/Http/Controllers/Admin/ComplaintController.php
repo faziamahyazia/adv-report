@@ -264,7 +264,7 @@ class ComplaintController extends Controller
         $validated = $request->validate([
             'id' => 'nullable|integer|exists:complaints,id',
             'title' => 'required|string|max:255',
-            'category' => 'required|in:rebah_semai,pertumbuhan_lambat,keseragaman_jelek,vigor_jelek,daya_tumbuh_rendah',
+            'category' => 'required|in:rebah_semai,pertumbuhan_lambat,keseragaman_jelek,vigor_jelek,daya_tumbuh_rendah,bulai,busuk_batang,other',
             'description' => 'nullable|string|max:5000',
             'product_id' => 'nullable|integer|exists:products,id',
             'product_name' => 'nullable|string|max:255',
@@ -701,6 +701,12 @@ class ComplaintController extends Controller
         } elseif ($category === Complaint::Category_DayaTumbuhRendah) {
             $issue = 'Daya tumbuh rendah';
             $action = 'Rekomendasi: periksa mutu benih, kondisi persemaian, dan tingkat kelembapan media.';
+        } elseif ($category === Complaint::Category_Bulai) {
+            $issue = 'Indikasi serangan bulai';
+            $action = 'Rekomendasi: lakukan rouging tanaman terinfeksi, kendalikan vektor, dan evaluasi fungisida sistemik sesuai anjuran.';
+        } elseif ($category === Complaint::Category_BusukBatang) {
+            $issue = 'Indikasi busuk batang';
+            $action = 'Rekomendasi: kurangi kelembapan berlebih, perbaiki drainase, sanitasi area, dan evaluasi pengendalian patogen batang.';
         }
 
         $priority = match ($severity) {

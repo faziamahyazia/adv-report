@@ -13,6 +13,8 @@ class Complaint extends Model
     public const Category_KeseragamanJelek = 'keseragaman_jelek';
     public const Category_VigorJelek = 'vigor_jelek';
     public const Category_DayaTumbuhRendah = 'daya_tumbuh_rendah';
+    public const Category_Bulai = 'bulai';
+    public const Category_BusukBatang = 'busuk_batang';
     public const Category_Other = 'other';
 
     public const Severity_Low = 'low';
@@ -30,6 +32,8 @@ class Complaint extends Model
         self::Category_KeseragamanJelek => 'Keseragaman Jelek',
         self::Category_VigorJelek => 'Vigor Jelek',
         self::Category_DayaTumbuhRendah => 'Daya Tumbuh Rendah',
+        self::Category_Bulai => 'Bulai',
+        self::Category_BusukBatang => 'Busuk Batang',
         self::Category_Other => 'Lainnya',
     ];
 

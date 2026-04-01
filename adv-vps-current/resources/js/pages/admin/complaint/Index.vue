@@ -58,9 +58,13 @@ const severityOptions = [
 
 const categoryOptions = [
   { value: "all", label: "Semua Kategori" },
-  { value: "germination", label: "Germination" },
-  { value: "growth", label: "Growth" },
-  { value: "pest_disease", label: "Pest/Disease" },
+  { value: "rebah_semai", label: "Rebah Semai" },
+  { value: "pertumbuhan_lambat", label: "Pertumbuhan Lambat" },
+  { value: "keseragaman_jelek", label: "Keseragaman Jelek" },
+  { value: "vigor_jelek", label: "Vigor Jelek" },
+  { value: "daya_tumbuh_rendah", label: "Daya Tumbuh Rendah" },
+  { value: "bulai", label: "Bulai" },
+  { value: "busuk_batang", label: "Busuk Batang" },
   { value: "other", label: "Lainnya" },
 ];
 const productOptions = computed(() => [

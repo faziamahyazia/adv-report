@@ -1,11 +1,24 @@
 <script setup>
 import { computed, onMounted, reactive, watch } from "vue";
 import { useForm, router, usePage } from "@inertiajs/vue3";
-import { Notify } from "quasar";
+import { Notify, useQuasar } from "quasar";
 
 const page = usePage();
+const $q = useQuasar();
 const title = computed(() => (page.props.data?.id ? `Edit Keluhan #${page.props.data.id}` : "Tambah Keluhan"));
 const draftKey = computed(() => `complaint-draft-${page.props.auth.user.id}`);
+const isDesktop = computed(() => $q.screen.gt.md);
+
+const categoryOptions = [
+  { label: "Rebah Semai", value: "rebah_semai" },
+  { label: "Pertumbuhan Lambat", value: "pertumbuhan_lambat" },
+  { label: "Keseragaman Jelek", value: "keseragaman_jelek" },
+  { label: "Vigor Jelek", value: "vigor_jelek" },
+  { label: "Daya Tumbuh Rendah", value: "daya_tumbuh_rendah" },
+  { label: "Bulai", value: "bulai" },
+  { label: "Busuk Batang", value: "busuk_batang" },
+  { label: "Lainnya", value: "other" },
+];
 
 const form = useForm({
   id: page.props.data?.id || null,
@@ -94,44 +107,56 @@ watch(() => form.batch_id, applyBatchMeta);
   <authenticated-layout>
     <template #title>{{ title }}</template>
 
-    <div class="q-pa-sm">
-      <q-card flat bordered>
+    <div class="complaint-editor-page q-pa-sm q-pa-md-md">
+      <q-card flat bordered class="complaint-editor-card">
+        <q-card-section class="q-pb-none">
+          <div class="text-h6 text-weight-bold">Form Input Complaint</div>
+          <div class="text-caption text-grey-7 q-mt-xs">
+            Layout desktop sudah dioptimasi full-width agar input lebih cepat dan rapi.
+          </div>
+        </q-card-section>
+
         <q-card-section>
           <q-form @submit.prevent="submit" class="q-gutter-md">
-            <div class="row q-col-gutter-sm">
-              <q-input class="col-12" v-model="form.title" outlined dense label="Subjek *" :error="!!form.errors.title" :error-message="form.errors.title" />
-              <q-input class="col-12 col-md-6" v-model="form.reporter_name" outlined dense label="Nama Petani / Bandar" :error="!!form.errors.reporter_name" :error-message="form.errors.reporter_name" />
-              <q-select class="col-12 col-md-6" v-model="form.category" outlined dense emit-value map-options label="Kategori"
-                :options="[
-                  { label: 'Rebah Semai', value: 'rebah_semai' },
-                  { label: 'Pertumbuhan Lambat', value: 'pertumbuhan_lambat' },
-                  { label: 'Keseragaman Jelek', value: 'keseragaman_jelek' },
-                  { label: 'Vigor Jelek', value: 'vigor_jelek' },
-                  { label: 'Daya Tumbuh Rendah', value: 'daya_tumbuh_rendah' },
-                ]" :error="!!form.errors.category" :error-message="form.errors.category" />
-              <q-select class="col-12 col-md-6" v-model="form.severity" outlined dense emit-value map-options label="Severity"
+            <div class="text-subtitle2 text-weight-medium">Informasi Keluhan</div>
+            <div class="row q-col-gutter-md">
+              <q-input class="col-12 col-lg-8" v-model="form.title" outlined dense label="Subjek *" :error="!!form.errors.title" :error-message="form.errors.title" />
+              <q-input class="col-12 col-lg-4" v-model="form.reporter_name" outlined dense label="Nama Petani / Bandar" :error="!!form.errors.reporter_name" :error-message="form.errors.reporter_name" />
+
+              <q-select class="col-12 col-md-6 col-xl-4" v-model="form.category" outlined dense emit-value map-options label="Kategori *"
+                :options="categoryOptions" :error="!!form.errors.category" :error-message="form.errors.category" />
+              <q-select class="col-12 col-md-6 col-xl-4" v-model="form.severity" outlined dense emit-value map-options label="Severity"
                 :options="[
                   { label: 'Low', value: 'low' },
                   { label: 'Medium', value: 'medium' },
                   { label: 'High', value: 'high' },
                 ]" :error="!!form.errors.severity" :error-message="form.errors.severity" />
+              <q-select v-if="$page.props.auth.user.role !== 'bs'" class="col-12 col-md-6 col-xl-4" v-model="form.bs_id" outlined dense emit-value map-options label="BS" :options="bsOptions" :error="!!form.errors.bs_id" :error-message="form.errors.bs_id" />
+            </div>
 
-              <q-select class="col-12 col-md-6" v-model="form.product_id" outlined dense emit-value map-options label="Produk" :options="productOptions" clearable />
-              <q-select class="col-12 col-md-6" v-model="form.batch_id" outlined dense emit-value map-options label="Pilih Lot/Batch (opsional)" :options="batchOptions" clearable />
+            <q-separator class="q-my-sm" />
 
-              <q-input class="col-12 col-md-6" v-model="form.batch_number" outlined dense label="No Lot / Batch Number" :error="!!form.errors.batch_number" :error-message="form.errors.batch_number" />
+            <div class="text-subtitle2 text-weight-medium">Produk dan Batch</div>
+            <div class="row q-col-gutter-md">
+              <q-select class="col-12 col-md-6 col-xl-4" v-model="form.product_id" outlined dense emit-value map-options label="Produk" :options="productOptions" clearable />
+              <q-select class="col-12 col-md-6 col-xl-4" v-model="form.batch_id" outlined dense emit-value map-options label="Pilih Lot/Batch (opsional)" :options="batchOptions" clearable />
+              <q-input class="col-12 col-md-6 col-xl-4" v-model="form.batch_number" outlined dense label="No Lot / Batch Number" :error="!!form.errors.batch_number" :error-message="form.errors.batch_number" />
+            </div>
 
-              <q-select v-if="$page.props.auth.user.role !== 'bs'" class="col-12 col-md-6" v-model="form.bs_id" outlined dense emit-value map-options label="BS" :options="bsOptions" :error="!!form.errors.bs_id" :error-message="form.errors.bs_id" />
+            <q-separator class="q-my-sm" />
 
-              <q-input class="col-12" v-model="form.location" outlined dense label="Alamat" :error="!!form.errors.location" :error-message="form.errors.location" />
+            <div class="text-subtitle2 text-weight-medium">Detail Lapangan</div>
+            <div class="row q-col-gutter-md">
+              <q-input class="col-12 col-lg-8" v-model="form.location" outlined dense label="Alamat" :error="!!form.errors.location" :error-message="form.errors.location" />
+              <q-input class="col-12 col-lg-4" v-model="form.status" outlined dense disable label="Status" />
 
               <q-input class="col-12" v-model="form.description" outlined type="textarea" autogrow label="Deskripsi Keluhan" :error="!!form.errors.description" :error-message="form.errors.description" />
 
               <q-file class="col-12" v-model="form.images" label="Upload Foto (maks 5, akan dikompres)" outlined dense multiple accept="image/*" :error="!!form.errors.images || !!form.errors['images.0']" :error-message="form.errors.images || form.errors['images.0']" />
             </div>
 
-            <div class="row justify-between items-center">
-              <div class="text-caption text-grey-7">
+            <div class="row justify-between items-center q-pt-sm">
+              <div class="text-caption text-grey-7" :class="{ 'q-mb-sm': !isDesktop }">
                 Mode offline draft aktif: form otomatis disimpan di perangkat Anda.
               </div>
               <div>
@@ -145,3 +170,21 @@ watch(() => form.batch_id, applyBatchMeta);
     </div>
   </authenticated-layout>
 </template>
+
+<style scoped>
+.complaint-editor-page {
+  width: 100%;
+}
+
+.complaint-editor-card {
+  width: 100%;
+  border-radius: 14px;
+}
+
+@media (min-width: 1280px) {
+  .complaint-editor-page {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+}
+</style>
