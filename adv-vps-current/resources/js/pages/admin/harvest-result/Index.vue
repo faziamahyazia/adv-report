@@ -331,9 +331,9 @@
                   <q-item-section side>{{ form.total_pieces ? safeNumber(form.total_pieces, 0) : '-' }} PCS</q-item-section>
                 </q-item>
                 <q-item>
-                  <q-item-section>Hasil per PCS</q-item-section>
+                  <q-item-section>Produktivitas Estimasi</q-item-section>
                   <q-item-section side>
-                    <span v-if="estimatedPerPieceYield !== null">{{ safeNumber(estimatedPerPieceYield, 2) }} kg</span>
+                    <span v-if="estimatedPerPieceYield !== null">{{ safeNumber(estimatedPerPieceYield, 4) }} kg/pohon</span>
                     <span v-else>-</span>
                   </q-item-section>
                 </q-item>
@@ -492,6 +492,10 @@ const estimatedProductivity = computed(() => {
 });
 
 const estimatedPerPieceYield = computed(() => {
+  if (estimatedGrownPlants.value && estimatedGrownPlants.value > 0 && totalHarvestQuantity.value > 0) {
+    return totalHarvestQuantity.value / estimatedGrownPlants.value;
+  }
+
   const pieces = Number(form.total_pieces || 0);
   if (pieces > 0 && totalHarvestQuantity.value > 0) {
     return totalHarvestQuantity.value / pieces;

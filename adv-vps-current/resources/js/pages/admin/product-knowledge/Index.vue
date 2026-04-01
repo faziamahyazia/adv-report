@@ -210,9 +210,6 @@ const selectedHarvestMetrics = computed(() => {
   const landArea = Number(item.land_area || 0);
   const totalPcs = Number(item.total_pieces || 0);
   const population = Number(item.demo_plot?.population || 0);
-  const perPieceYield = totalPcs > 0
-    ? (qty / totalPcs)
-    : (Number(item.per_piece_quantity || 0) || null);
   const perTreeYield = population > 0 ? (qty / population) : null;
   const productivity = landArea > 0 ? (qty / landArea) : null;
 
@@ -224,6 +221,9 @@ const selectedHarvestMetrics = computed(() => {
   const totalSeedCount = (seedsPerPiece > 0 && totalPcs > 0) ? (seedsPerPiece * totalPcs) : null;
   const estimatedGrownPlants = (totalSeedCount && germination > 0) ? (totalSeedCount * (germination / 100)) : null;
   const productivityPerGrownPlant = (estimatedGrownPlants && qty > 0) ? (qty / estimatedGrownPlants) : null;
+  const perPieceYield = productivityPerGrownPlant ?? (totalPcs > 0
+    ? (qty / totalPcs)
+    : (Number(item.per_piece_quantity || 0) || null));
 
   const estimatedRevenueFromPcs = (pricePerPcs && totalPcs > 0)
     ? (pricePerPcs * totalPcs)
@@ -1419,8 +1419,8 @@ const isBs = page.props.auth?.user?.role === "bs";
                   </div>
                   <div class="col-12 col-sm-6 col-md-4 col-lg-2">
                     <div class="detail-metric-card">
-                      <div class="detail-metric-label">Hasil per PCS</div>
-                      <div class="detail-metric-value">{{ selectedHarvestMetrics.perPieceYield ? `${formatNumber(selectedHarvestMetrics.perPieceYield, 4)} ${selectedHarvest.harvest_unit || 'kg'}` : '-' }}</div>
+                      <div class="detail-metric-label">Produktivitas Estimasi</div>
+                      <div class="detail-metric-value">{{ selectedHarvestMetrics.perPieceYield ? `${formatNumber(selectedHarvestMetrics.perPieceYield, 4)} ${selectedHarvest.harvest_unit || 'kg'}/pohon` : '-' }}</div>
                     </div>
                   </div>
                   <div class="col-12 col-sm-6 col-md-4 col-lg-2">
@@ -1497,7 +1497,7 @@ const isBs = page.props.auth?.user?.role === "bs";
                       <div class="detail-key">Biji per PCS</div><div class="detail-val">{{ selectedHarvestMetrics?.seedsPerPiece ? `${formatNumber(selectedHarvestMetrics.seedsPerPiece, 0)} biji` : '-' }}</div>
                       <div class="detail-key">Total Biji</div><div class="detail-val">{{ selectedHarvestMetrics?.totalSeedCount ? `${formatNumber(selectedHarvestMetrics.totalSeedCount, 0)} biji` : '-' }}</div>
                       <div class="detail-key">Estimasi Tumbuh</div><div class="detail-val">{{ selectedHarvestMetrics?.estimatedGrownPlants ? `${formatNumber(selectedHarvestMetrics.estimatedGrownPlants, 0)} pohon` : '-' }}</div>
-                      <div class="detail-key">Hasil per PCS</div><div class="detail-val">{{ selectedHarvestMetrics?.perPieceYield ? `${formatNumber(selectedHarvestMetrics.perPieceYield, 4)} ${selectedHarvest.harvest_unit || 'kg'}` : '-' }}</div>
+                      <div class="detail-key">Produktivitas Estimasi</div><div class="detail-val">{{ selectedHarvestMetrics?.perPieceYield ? `${formatNumber(selectedHarvestMetrics.perPieceYield, 4)} ${selectedHarvest.harvest_unit || 'kg'}/pohon` : '-' }}</div>
                       <div class="detail-key">Produktivitas per Tanaman Tumbuh</div><div class="detail-val">{{ selectedHarvestMetrics?.productivityPerGrownPlant ? `${formatNumber(selectedHarvestMetrics.productivityPerGrownPlant, 4)} ${selectedHarvest.harvest_unit || 'kg'}/pohon` : '-' }}</div>
                       <div class="detail-key">Mode Panen</div><div class="detail-val">{{ selectedHarvest.is_multiple_harvest ? 'Beberapa Kali Panen' : 'Sekali Panen' }}</div>
                       <div class="detail-key">Penginput</div><div class="detail-val">{{ selectedHarvest.created_by?.name || '-' }}</div>
