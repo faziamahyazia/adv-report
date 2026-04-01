@@ -4,7 +4,7 @@
 
     <div class="harvest-page q-pa-sm q-pa-md-md">
       <div class="row q-col-gutter-md items-stretch">
-        <div class="col-12 col-lg-8">
+        <div class="col-12">
           <q-card flat bordered class="harvest-card">
             <q-card-section class="q-pb-none">
               <div class="text-h6 text-weight-bold">Input Data Hasil Panen</div>
@@ -15,7 +15,7 @@
 
             <q-card-section>
               <div class="row q-col-gutter-md">
-                <div class="col-12 col-md-6">
+                <div class="col-12 col-md-4">
                   <q-option-group
                     v-model="form.farmer_source"
                     :options="farmerSourceOptions"
@@ -26,7 +26,7 @@
                   />
                 </div>
 
-                <div class="col-12 col-md-6" v-if="form.farmer_source === 'demo_plot'">
+                <div class="col-12 col-md-8" v-if="form.farmer_source === 'demo_plot'">
                   <q-select
                     v-model="form.demo_plot_id"
                     :options="demoPlotOptions"
@@ -42,7 +42,7 @@
                   />
                 </div>
 
-                <div class="col-12 col-md-6">
+                <div class="col-12 col-md-4">
                   <q-select
                     v-model="form.product_id"
                     :options="productOptions"
@@ -58,7 +58,7 @@
                     :error-message="firstError(errors.product_id)"
                   />
                 </div>
-                <div class="col-12 col-md-6">
+                <div class="col-12 col-md-4">
                   <q-input
                     v-model="form.farmer_name"
                     outlined
@@ -82,7 +82,7 @@
                   </q-banner>
                 </div>
 
-                <div class="col-12 col-md-6">
+                <div class="col-12 col-md-4">
                   <q-input
                     v-model="form.harvest_date"
                     type="date"
@@ -93,7 +93,7 @@
                     :error-message="firstError(errors.harvest_date)"
                   />
                 </div>
-                <div class="col-12 col-md-6">
+                <div class="col-12 col-md-4">
                   <q-input
                     v-model.number="form.harvest_age_days"
                     type="number"
@@ -107,7 +107,7 @@
                   />
                 </div>
 
-                <div class="col-12 col-md-6">
+                <div class="col-12 col-md-4">
                   <q-input
                     v-model.number="form.land_area"
                     type="number"
@@ -120,7 +120,7 @@
                     :error-message="firstError(errors.land_area)"
                   />
                 </div>
-                <div class="col-12 col-md-6 flex items-center">
+                <div class="col-12 col-md-4 flex items-center">
                   <q-toggle
                     v-model="form.is_multiple_harvest"
                     color="primary"
@@ -207,11 +207,11 @@
                   <q-btn class="q-mt-sm" flat color="primary" icon="add" label="Tambah K" @click="addCycle" />
                 </div>
 
-                <div class="col-12 col-md-6">
+                <div class="col-12 col-md-4">
                   <q-input outlined dense disable model-value="kg" label="Satuan Panen" />
                 </div>
 
-                <div class="col-12 col-md-6">
+                <div class="col-12 col-md-4">
                   <q-input
                     v-model="form.strengths"
                     type="textarea"
@@ -223,7 +223,7 @@
                     :error-message="firstError(errors.strengths)"
                   />
                 </div>
-                <div class="col-12 col-md-6">
+                <div class="col-12 col-md-4">
                   <q-input
                     v-model="form.weaknesses"
                     type="textarea"
@@ -272,8 +272,8 @@
           </q-card>
         </div>
 
-        <div class="col-12 col-lg-4">
-          <q-card flat bordered class="harvest-card sticky-summary">
+        <div class="col-12">
+          <q-card flat bordered class="harvest-card summary-card">
             <q-card-section>
               <div class="text-subtitle1 text-weight-medium">Ringkasan Input</div>
               <div class="text-caption text-grey-7 q-mb-sm">Preview hasil perhitungan otomatis.</div>
@@ -556,8 +556,8 @@ async function submitHarvest() {
 
 <style scoped>
 .harvest-page {
-  max-width: 1400px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
 }
 
 .harvest-card {
@@ -570,9 +570,20 @@ async function submitHarvest() {
 }
 
 @media (min-width: 1200px) {
-  .sticky-summary {
-    position: sticky;
-    top: 16px;
+  .harvest-page {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .summary-card .q-list {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .summary-card .q-item {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
   }
 }
 </style>
