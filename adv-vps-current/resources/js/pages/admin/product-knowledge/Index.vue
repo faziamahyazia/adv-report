@@ -56,6 +56,7 @@ const editMode = ref(false);
 const savingEdit = ref(false);
 const deletingItem = ref(false);
 const editPhotoFiles = ref([]);
+const editPhotoPreviews = ref([]);
 const editErrors = ref({});
 
 const editForm = reactive({
@@ -546,7 +547,23 @@ function resetEditForm(item) {
   editForm.weaknesses = item?.weaknesses || "";
   editForm.notes = item?.notes || "";
   editErrors.value = {};
+  editPhotoPreviews.value.forEach((url) => URL.revokeObjectURL(url));
+  editPhotoPreviews.value = [];
   editPhotoFiles.value = [];
+}
+
+function handleEditPhotoChange(files) {
+  editPhotoPreviews.value.forEach((url) => URL.revokeObjectURL(url));
+  editPhotoPreviews.value = [];
+
+  if (Array.isArray(files)) {
+    editPhotoFiles.value = files.filter(Boolean);
+    editPhotoPreviews.value = editPhotoFiles.value.map((file) => URL.createObjectURL(file));
+    return;
+  }
+
+  editPhotoFiles.value = files ? [files] : [];
+  editPhotoPreviews.value = editPhotoFiles.value.map((file) => URL.createObjectURL(file));
 }
 
 watch(
@@ -652,8 +669,12 @@ async function saveHarvestEdit() {
       });
     }
 
-    if (Array.isArray(editPhotoFiles.value) && editPhotoFiles.value.length > 0) {
-      editPhotoFiles.value.forEach((file) => {
+    const selectedFiles = Array.isArray(editPhotoFiles.value)
+      ? editPhotoFiles.value
+      : (editPhotoFiles.value ? [editPhotoFiles.value] : []);
+
+    if (selectedFiles.length > 0) {
+      selectedFiles.forEach((file) => {
         formData.append("photos[]", file);
       });
     }
@@ -1496,9 +1517,25 @@ const isBs = page.props.auth?.user?.role === "bs";
                       multiple
                       use-chips
                       clearable
+                      @update:model-value="handleEditPhotoChange"
                       :error="Boolean(editErrors.photos || editErrors.photo)"
                       :error-message="firstError(editErrors.photos || editErrors.photo)"
                     />
+                    <div v-if="editPhotoPreviews.length" class="detail-upload-grid q-mt-sm">
+                      <q-img
+                        v-for="(img, idx) in editPhotoPreviews"
+                        :key="`edit-upload-${idx}`"
+                        :src="img"
+                        ratio="1"
+                        class="detail-upload-thumb"
+                      >
+                        <template #error>
+                          <div class="detail-upload-thumb flex flex-center bg-grey-2">
+                            <q-icon name="broken_image" size="18px" color="grey-6" />
+                          </div>
+                        </template>
+                      </q-img>
+                    </div>
                   </div>
                 </div>
                 <div class="row justify-end q-gutter-sm q-mt-sm">
@@ -2131,6 +2168,18 @@ const isBs = page.props.auth?.user?.role === "bs";
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
   gap: 8px;
+}
+
+.detail-upload-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 8px;
+}
+
+.detail-upload-thumb {
+  border-radius: 8px;
+  border: 1px solid #dce7ef;
+  overflow: hidden;
 }
 
 .detail-gallery-thumb {

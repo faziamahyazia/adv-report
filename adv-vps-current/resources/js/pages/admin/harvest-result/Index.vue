@@ -292,6 +292,21 @@
                     :error-message="firstError(errors.photos || errors.photo)"
                   />
                   <div class="text-caption text-grey-7 q-mt-xs">Format JPG/PNG, maksimal 10MB per foto, maksimal 10 foto.</div>
+                  <div v-if="photoPreviews.length" class="harvest-photo-grid q-mt-sm">
+                    <q-img
+                      v-for="(img, idx) in photoPreviews"
+                      :key="`new-photo-${idx}`"
+                      :src="img"
+                      ratio="1"
+                      class="harvest-photo-thumb"
+                    >
+                      <template #error>
+                        <div class="harvest-photo-thumb flex flex-center bg-grey-2">
+                          <q-icon name="broken_image" size="18px" color="grey-6" />
+                        </div>
+                      </template>
+                    </q-img>
+                  </div>
                 </div>
                 <div class="col-12">
                   <q-input
@@ -420,6 +435,7 @@ const farmerSourceOptions = [
 
 const submitting = ref(false);
 const errors = ref({});
+const photoPreviews = ref([]);
 
 const form = reactive({
   farmer_source: "demo_plot",
@@ -616,12 +632,17 @@ function removeCycle(index) {
 }
 
 function handlePhotoChange(files) {
+  photoPreviews.value.forEach((url) => URL.revokeObjectURL(url));
+  photoPreviews.value = [];
+
   if (Array.isArray(files)) {
-    form.photoFiles = files;
+    form.photoFiles = files.filter(Boolean);
+    photoPreviews.value = form.photoFiles.map((file) => URL.createObjectURL(file));
     return;
   }
 
   form.photoFiles = files ? [files] : [];
+  photoPreviews.value = form.photoFiles.map((file) => URL.createObjectURL(file));
 }
 
 function safeNumber(value, decimals) {
@@ -650,6 +671,8 @@ function resetForm() {
   form.strengths = "";
   form.weaknesses = "";
   form.notes = "";
+  photoPreviews.value.forEach((url) => URL.revokeObjectURL(url));
+  photoPreviews.value = [];
   form.photoFiles = [];
   errors.value = {};
 }
@@ -688,8 +711,12 @@ async function submitHarvest() {
       });
     }
 
-    if (Array.isArray(form.photoFiles) && form.photoFiles.length > 0) {
-      form.photoFiles.forEach((file) => {
+    const selectedFiles = Array.isArray(form.photoFiles)
+      ? form.photoFiles
+      : (form.photoFiles ? [form.photoFiles] : []);
+
+    if (selectedFiles.length > 0) {
+      selectedFiles.forEach((file) => {
         payload.append("photos[]", file);
       });
     }
@@ -758,6 +785,18 @@ async function submitHarvest() {
 .cycle-action {
   display: flex;
   justify-content: flex-end;
+}
+
+.harvest-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 8px;
+}
+
+.harvest-photo-thumb {
+  border-radius: 8px;
+  border: 1px solid #dce7ef;
+  overflow: hidden;
 }
 
 .harvest-layout {

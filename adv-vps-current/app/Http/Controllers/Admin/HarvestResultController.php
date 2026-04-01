@@ -9,6 +9,7 @@ use App\Models\ProductHarvestResult;
 use App\Models\ProductHarvestResultPhoto;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Validation\ValidationException;
 use Intervention\Image\ImageManager;
 
@@ -327,15 +328,23 @@ class HarvestResultController extends Controller
         $files = [];
 
         if ($request->hasFile('photos')) {
-            foreach ((array) $request->file('photos') as $file) {
-                if ($file) {
-                    $files[] = $file;
+            $incomingPhotos = $request->file('photos');
+            if ($incomingPhotos instanceof UploadedFile) {
+                $files[] = $incomingPhotos;
+            } elseif (is_array($incomingPhotos)) {
+                foreach ($incomingPhotos as $file) {
+                    if ($file instanceof UploadedFile) {
+                        $files[] = $file;
+                    }
                 }
             }
         }
 
         if ($request->hasFile('photo')) {
-            $files[] = $request->file('photo');
+            $singlePhoto = $request->file('photo');
+            if ($singlePhoto instanceof UploadedFile) {
+                $files[] = $singlePhoto;
+            }
         }
 
         return $files;
