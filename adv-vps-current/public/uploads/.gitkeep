@@ -1,0 +1,4 @@
+# This file ensures the uploads directory exists in the repository
+# Actual uploaded files are ignored by .gitignore
+# Directory permissions should be set to 755 (or 775 if using www-data group)
+# Owner should be www-data:www-data on production server
