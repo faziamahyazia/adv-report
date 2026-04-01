@@ -17,6 +17,7 @@ class ProductHarvestResult extends Model
         'per_piece_quantity',
         'is_multiple_harvest',
         'harvest_cycles',
+        'demo_plot_id',
         'farmer_name',
         'land_area',
         'total_pieces',
@@ -39,6 +40,7 @@ class ProductHarvestResult extends Model
         'per_piece_quantity' => 'float',
         'is_multiple_harvest' => 'boolean',
         'harvest_cycles' => 'array',
+        'demo_plot_id' => 'integer',
         'land_area' => 'float',
         'total_pieces' => 'float',
         'created_by_uid' => 'integer',
@@ -53,5 +55,10 @@ class ProductHarvestResult extends Model
     public function createdBy()
     {
         return $this->belongsTo(User::class, 'created_by_uid');
+    }
+
+    public function demoPlot()
+    {
+        return $this->belongsTo(DemoPlot::class, 'demo_plot_id');
     }
 }

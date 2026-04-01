@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\DemoPlot;
 use App\Models\Product;
 use App\Models\ProductHarvestResult;
 use App\Models\User;
@@ -14,8 +15,39 @@ class HarvestResultController extends Controller
 {
     public function index()
     {
+        $user = request()->user();
+
+        $demoPlotsQuery = DemoPlot::query()
+            ->with(['product:id,name'])
+            ->where('active', true)
+            ->orderByDesc('updated_datetime')
+            ->orderByDesc('id');
+
+        if ($user && $user->role === User::Role_BS) {
+            $demoPlotsQuery->where('user_id', $user->id);
+        }
+
+        $demoPlots = $demoPlotsQuery->get([
+            'id',
+            'user_id',
+            'product_id',
+            'owner_name',
+            'population',
+            'plant_date',
+        ])->map(function ($item) {
+            return [
+                'id' => $item->id,
+                'product_id' => $item->product_id,
+                'product_name' => $item->product?->name,
+                'owner_name' => $item->owner_name,
+                'population' => $item->population,
+                'plant_date' => optional($item->plant_date)->format('Y-m-d'),
+            ];
+        })->values();
+
         return inertia('admin/harvest-result/Index', [
             'products' => Product::where('active', true)->orderBy('name')->get(['id', 'name']),
+            'demoPlots' => $demoPlots,
         ]);
     }
 
@@ -26,22 +58,18 @@ class HarvestResultController extends Controller
         }
 
         $validated = $request->validate([
+            'demo_plot_id' => 'nullable|exists:demo_plots,id',
             'product_id' => 'required|exists:products,id',
             'harvest_date' => 'required|date',
             'harvest_age_days' => 'nullable|integer|min:1|max:999',
             'harvest_quantity' => 'required|numeric|min:0',
-            'harvest_unit' => 'required|string|in:kg,pcs',
-            'per_piece_quantity' => 'nullable|numeric|min:0',
             'is_multiple_harvest' => 'nullable|boolean',
             'harvest_cycles' => 'nullable|array',
             'harvest_cycles.*.label' => 'nullable|string|max:10',
             'harvest_cycles.*.date' => 'nullable|date',
             'harvest_cycles.*.quantity' => 'nullable|numeric|min:0',
-            'harvest_cycles.*.pieces' => 'nullable|numeric|min:0',
-            'total_pieces' => 'nullable|numeric|min:0',
             'farmer_name' => 'nullable|string|max:255',
             'land_area' => 'nullable|numeric|min:0',
-            'location' => 'nullable|string|max:255',
             'strengths' => 'nullable|string',
             'weaknesses' => 'nullable|string',
             'notes' => 'nullable|string',
@@ -52,13 +80,11 @@ class HarvestResultController extends Controller
         $cycles = collect($validated['harvest_cycles'] ?? [])
             ->map(function ($cycle, $index) {
                 $quantity = isset($cycle['quantity']) ? (float) $cycle['quantity'] : null;
-                $pieces = isset($cycle['pieces']) ? (float) $cycle['pieces'] : null;
 
                 return [
                     'label' => trim((string) ($cycle['label'] ?? ('K' . ($index + 1)))) ?: ('K' . ($index + 1)),
                     'date' => $cycle['date'] ?? null,
                     'quantity' => $quantity,
-                    'pieces' => $pieces,
                 ];
             })
             ->filter(fn ($cycle) => $cycle['quantity'] !== null && $cycle['quantity'] > 0)
@@ -70,20 +96,20 @@ class HarvestResultController extends Controller
             ]);
         }
 
-        $harvestQuantity = (float) $validated['harvest_quantity'];
-        $totalPieces = isset($validated['total_pieces']) ? (float) $validated['total_pieces'] : null;
+        $demoPlotId = $validated['demo_plot_id'] ?? null;
+        $demoPlot = null;
+        if ($demoPlotId) {
+            $demoPlot = DemoPlot::query()->findOrFail($demoPlotId);
 
-        if ($isMultipleHarvest && $cycles->isNotEmpty()) {
-            $harvestQuantity = (float) $cycles->sum('quantity');
-            $sumPieces = (float) $cycles->sum(fn ($cycle) => (float) ($cycle['pieces'] ?? 0));
-            if ($sumPieces > 0) {
-                $totalPieces = $sumPieces;
+            if ($request->user()->role === User::Role_BS && (int) $demoPlot->user_id !== (int) $request->user()->id) {
+                abort(403, 'Demo Plot tidak dapat diakses.');
             }
         }
 
-        $perPieceQuantity = isset($validated['per_piece_quantity']) ? (float) $validated['per_piece_quantity'] : null;
-        if ($perPieceQuantity === null && $totalPieces && $totalPieces > 0 && $harvestQuantity > 0) {
-            $perPieceQuantity = $harvestQuantity / $totalPieces;
+        $harvestQuantity = (float) $validated['harvest_quantity'];
+
+        if ($isMultipleHarvest && $cycles->isNotEmpty()) {
+            $harvestQuantity = (float) $cycles->sum('quantity');
         }
 
         $photoPath = null;
@@ -98,18 +124,19 @@ class HarvestResultController extends Controller
         }
 
         ProductHarvestResult::create([
-            'product_id' => $validated['product_id'],
+            'demo_plot_id' => $demoPlot?->id,
+            'product_id' => $demoPlot?->product_id ?? $validated['product_id'],
             'harvest_date' => $validated['harvest_date'],
             'harvest_age_days' => $validated['harvest_age_days'] ?? null,
             'harvest_quantity' => $harvestQuantity,
-            'harvest_unit' => $validated['harvest_unit'],
-            'per_piece_quantity' => $perPieceQuantity,
+            'harvest_unit' => 'kg',
+            'per_piece_quantity' => null,
             'is_multiple_harvest' => $isMultipleHarvest,
             'harvest_cycles' => $isMultipleHarvest ? $cycles->all() : null,
-            'total_pieces' => $totalPieces,
-            'farmer_name' => $validated['farmer_name'] ?? null,
+            'total_pieces' => $demoPlot?->population,
+            'farmer_name' => $demoPlot?->owner_name ?? ($validated['farmer_name'] ?? null),
             'land_area' => $validated['land_area'] ?? null,
-            'location' => $validated['location'] ?? null,
+            'location' => null,
             'strengths' => $validated['strengths'] ?? null,
             'weaknesses' => $validated['weaknesses'] ?? null,
             'notes' => $validated['notes'] ?? null,

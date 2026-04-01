@@ -145,13 +145,13 @@ class ProductKnowledgeController extends Controller
         $q = ProductHarvestResult::with([
             'product:id,name',
             'createdBy:id,name',
+            'demoPlot:id,owner_name,population,product_id',
         ])->orderByDesc('created_datetime')->orderByDesc('id');
 
         if (!empty($filter['search'])) {
             $search = trim($filter['search']);
             $q->where(function ($inner) use ($search) {
-                $inner->where('location', 'like', '%' . $search . '%')
-                    ->orWhere('farmer_name', 'like', '%' . $search . '%')
+                $inner->where('farmer_name', 'like', '%' . $search . '%')
                     ->orWhere('strengths', 'like', '%' . $search . '%')
                     ->orWhere('weaknesses', 'like', '%' . $search . '%')
                     ->orWhere('notes', 'like', '%' . $search . '%')

@@ -172,7 +172,7 @@ const isBs = page.props.auth?.user?.role === "bs";
               v-model="harvestFilter.search"
               dense
               outlined
-              placeholder="Cari lokasi, varietas, penginput..."
+              placeholder="Cari petani, varietas, penginput..."
               clearable
               bg-color="white"
               style="max-width:280px"
@@ -292,6 +292,7 @@ const isBs = page.props.auth?.user?.role === "bs";
                 <div><b>Tanggal Panen:</b> {{ formatDate(item.harvest_date) }}</div>
                 <div v-if="item.harvest_age_days"><b>Umur Panen:</b> {{ item.harvest_age_days }} hari</div>
                 <div v-if="item.land_area"><b>Luas Lahan:</b> {{ item.land_area }} m²</div>
+                <div v-if="item.demo_plot?.population"><b>Populasi Tanam:</b> {{ formatNumber(item.demo_plot.population, 0) }} pcs</div>
                 <div v-if="item.is_multiple_harvest" class="text-primary">
                   <q-icon name="cached" size="16px" /> Beberapa kali panen
                 </div>
@@ -313,7 +314,6 @@ const isBs = page.props.auth?.user?.role === "bs";
                   >
                     <b>{{ cycle.label || `K${idx + 1}` }}</b>
                     - {{ formatNumber(cycle.quantity, 2) }} {{ item.harvest_unit }}
-                    <span v-if="cycle.pieces"> | {{ formatNumber(cycle.pieces, 0) }} buah</span>
                     <span v-if="cycle.date"> | {{ formatDate(cycle.date) }}</span>
                   </div>
                 </div>
@@ -325,12 +325,6 @@ const isBs = page.props.auth?.user?.role === "bs";
                 <div v-if="item.land_area && item.harvest_quantity" class="text-info">
                   <b>Produktivitas:</b> {{ formatNumber(item.harvest_quantity / item.land_area, 2) }} {{ item.harvest_unit }}/m²
                 </div>
-                <div v-if="item.total_pieces && item.harvest_quantity" class="text-info">
-                  <b>Per Buah:</b> {{ formatNumber(item.harvest_quantity / item.total_pieces, 4) }} {{ item.harvest_unit }}
-                </div>
-                <div v-if="item.per_piece_quantity" class="text-info">
-                  <b>Per Satuan:</b> {{ item.per_piece_quantity }} {{ item.harvest_unit }}
-                </div>
               </div>
 
               <q-separator class="q-my-sm" v-if="item.strengths || item.weaknesses || item.notes" />
@@ -338,7 +332,6 @@ const isBs = page.props.auth?.user?.role === "bs";
               <div v-if="item.strengths" class="text-body2"><b>Kekuatan:</b> {{ item.strengths }}</div>
               <div v-if="item.weaknesses" class="text-body2 q-mt-xs"><b>Kelemahan:</b> {{ item.weaknesses }}</div>
               <div v-if="item.notes" class="text-body2 q-mt-xs"><b>Catatan:</b> {{ item.notes }}</div>
-              <div v-if="item.location" class="text-body2 q-mt-xs"><b>Lokasi:</b> {{ item.location }}</div>
             </q-card-section>
           </q-card>
         </div>

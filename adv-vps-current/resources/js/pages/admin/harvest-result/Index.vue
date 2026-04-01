@@ -16,6 +16,33 @@
             <q-card-section>
               <div class="row q-col-gutter-md">
                 <div class="col-12 col-md-6">
+                  <q-option-group
+                    v-model="form.farmer_source"
+                    :options="farmerSourceOptions"
+                    type="radio"
+                    inline
+                    dense
+                    label="Sumber Data Petani"
+                  />
+                </div>
+
+                <div class="col-12 col-md-6" v-if="form.farmer_source === 'demo_plot'">
+                  <q-select
+                    v-model="form.demo_plot_id"
+                    :options="demoPlotOptions"
+                    option-value="value"
+                    option-label="label"
+                    emit-value
+                    map-options
+                    outlined
+                    dense
+                    label="Pilih Demo Plot Petani"
+                    :error="Boolean(errors.demo_plot_id)"
+                    :error-message="firstError(errors.demo_plot_id)"
+                  />
+                </div>
+
+                <div class="col-12 col-md-6">
                   <q-select
                     v-model="form.product_id"
                     :options="productOptions"
@@ -26,6 +53,7 @@
                     outlined
                     dense
                     label="Produk *"
+                    :disable="form.farmer_source === 'demo_plot' && Boolean(form.demo_plot_id)"
                     :error="Boolean(errors.product_id)"
                     :error-message="firstError(errors.product_id)"
                   />
@@ -36,9 +64,22 @@
                     outlined
                     dense
                     label="Nama Petani"
+                    :disable="form.farmer_source === 'demo_plot'"
                     :error="Boolean(errors.farmer_name)"
                     :error-message="firstError(errors.farmer_name)"
                   />
+                </div>
+
+                <div class="col-12" v-if="selectedDemoPlot">
+                  <q-banner rounded class="bg-green-1 text-green-9">
+                    <div class="text-weight-medium">Data Basic dari Demo Plot otomatis terisi</div>
+                    <div class="text-caption q-mt-xs">
+                      Petani: <b>{{ selectedDemoPlot.owner_name || '-' }}</b>
+                      | Produk: <b>{{ selectedDemoPlot.product_name || '-' }}</b>
+                      | Populasi Tanam: <b>{{ safeNumber(selectedDemoPlot.population, 0) }} pcs</b>
+                      <span v-if="selectedDemoPlot.plant_date"> | Tgl Tanam: <b>{{ selectedDemoPlot.plant_date }}</b></span>
+                    </div>
+                  </q-banner>
                 </div>
 
                 <div class="col-12 col-md-6">
@@ -88,26 +129,14 @@
                 </div>
 
                 <div class="col-12 col-md-4">
-                  <q-select
-                    v-model="form.harvest_unit"
-                    :options="unitOptions"
-                    outlined
-                    dense
-                    label="Satuan *"
-                    :error="Boolean(errors.harvest_unit)"
-                    :error-message="firstError(errors.harvest_unit)"
-                  />
-                </div>
-
-                <div class="col-12 col-md-4">
                   <q-input
                     v-model.number="form.harvest_quantity"
                     type="number"
                     outlined
                     dense
                     :disable="form.is_multiple_harvest"
-                    :hint="form.is_multiple_harvest ? 'Otomatis dari total K1/K2/dst' : ''"
-                    label="Jumlah Panen *"
+                    :hint="form.is_multiple_harvest ? 'Otomatis dari total K1/K2/dst (kg)' : 'Satuan panen dipatenkan: kg'"
+                    label="Jumlah Panen (kg) *"
                     step="0.01"
                     min="0"
                     :error="Boolean(errors.harvest_quantity)"
@@ -117,16 +146,13 @@
 
                 <div class="col-12 col-md-4">
                   <q-input
-                    v-model.number="form.total_pieces"
+                    :model-value="selectedDemoPlot ? safeNumber(selectedDemoPlot.population, 0) : '-'"
                     type="number"
                     outlined
                     dense
-                    :disable="form.is_multiple_harvest"
-                    :hint="form.is_multiple_harvest ? 'Otomatis dari total buah per siklus' : ''"
-                    label="Total Buah/Satuan"
+                    disable
+                    label="Populasi Tanam dari Demo Plot (pcs)"
                     min="0"
-                    :error="Boolean(errors.total_pieces)"
-                    :error-message="firstError(errors.total_pieces)"
                   />
                 </div>
 
@@ -159,22 +185,12 @@
                               type="number"
                               dense
                               outlined
-                              :label="`Jumlah (${form.harvest_unit})`"
+                              label="Jumlah (kg)"
                               min="0"
                               step="0.01"
                             />
                           </div>
-                          <div class="col-12 col-md-3">
-                            <q-input
-                              v-model.number="cycle.pieces"
-                              type="number"
-                              dense
-                              outlined
-                              label="Total Buah"
-                              min="0"
-                            />
-                          </div>
-                          <div class="col-12 col-md-1 text-right">
+                          <div class="col-12 col-md-4 text-right">
                             <q-btn
                               flat
                               round
@@ -192,28 +208,7 @@
                 </div>
 
                 <div class="col-12 col-md-6">
-                  <q-input
-                    v-model.number="form.per_piece_quantity"
-                    type="number"
-                    outlined
-                    dense
-                    label="Hasil Per Buah/Satuan"
-                    min="0"
-                    step="0.0001"
-                    :hint="perPieceHint"
-                    :error="Boolean(errors.per_piece_quantity)"
-                    :error-message="firstError(errors.per_piece_quantity)"
-                  />
-                </div>
-                <div class="col-12 col-md-6">
-                  <q-input
-                    v-model="form.location"
-                    outlined
-                    dense
-                    label="Lokasi / Blok Lahan"
-                    :error="Boolean(errors.location)"
-                    :error-message="firstError(errors.location)"
-                  />
+                  <q-input outlined dense disable model-value="kg" label="Satuan Panen" />
                 </div>
 
                 <div class="col-12 col-md-6">
@@ -239,6 +234,19 @@
                     :error="Boolean(errors.weaknesses)"
                     :error-message="firstError(errors.weaknesses)"
                   />
+                  <q-file
+                    v-model="form.photoFile"
+                    outlined
+                    dense
+                    class="q-mt-sm"
+                    label="Upload Foto Kelemahan / Masalah Panen"
+                    accept="image/*"
+                    clearable
+                    @update:model-value="handlePhotoChange"
+                    :error="Boolean(errors.photo)"
+                    :error-message="firstError(errors.photo)"
+                  />
+                  <div class="text-caption text-grey-7 q-mt-xs">Format JPG/PNG, maksimal 10MB.</div>
                 </div>
                 <div class="col-12">
                   <q-input
@@ -251,21 +259,6 @@
                     :error="Boolean(errors.notes)"
                     :error-message="firstError(errors.notes)"
                   />
-                </div>
-
-                <div class="col-12">
-                  <q-file
-                    v-model="form.photoFile"
-                    outlined
-                    dense
-                    label="Foto Panen"
-                    accept="image/*"
-                    clearable
-                    @update:model-value="handlePhotoChange"
-                    :error="Boolean(errors.photo)"
-                    :error-message="firstError(errors.photo)"
-                  />
-                  <div class="text-caption text-grey-7 q-mt-xs">Format JPG/PNG, maks 10MB.</div>
                 </div>
               </div>
             </q-card-section>
@@ -288,20 +281,16 @@
               <q-list dense separator>
                 <q-item>
                   <q-item-section>Total Panen</q-item-section>
-                  <q-item-section side>{{ safeNumber(totalHarvestQuantity, 2) }} {{ form.harvest_unit }}</q-item-section>
+                  <q-item-section side>{{ safeNumber(totalHarvestQuantity, 2) }} kg</q-item-section>
                 </q-item>
                 <q-item>
-                  <q-item-section>Total Buah</q-item-section>
-                  <q-item-section side>{{ safeNumber(totalHarvestPieces, 0) }}</q-item-section>
-                </q-item>
-                <q-item>
-                  <q-item-section>Per Buah</q-item-section>
-                  <q-item-section side>{{ safeNumber(estimatedPerPiece, 4) }} {{ form.harvest_unit }}</q-item-section>
+                  <q-item-section>Populasi Tanam</q-item-section>
+                  <q-item-section side>{{ selectedDemoPlot ? safeNumber(selectedDemoPlot.population, 0) : '-' }} pcs</q-item-section>
                 </q-item>
                 <q-item>
                   <q-item-section>Produktivitas</q-item-section>
                   <q-item-section side>
-                    <span v-if="estimatedProductivity !== null">{{ safeNumber(estimatedProductivity, 2) }} {{ form.harvest_unit }}/m2</span>
+                    <span v-if="estimatedProductivity !== null">{{ safeNumber(estimatedProductivity, 2) }} kg/m2</span>
                     <span v-else>-</span>
                   </q-item-section>
                 </q-item>
@@ -329,16 +318,22 @@ const $q = useQuasar();
 const page = usePage();
 
 const products = page.props.products ?? [];
+const demoPlots = page.props.demoPlots ?? [];
 const productOptions = products.map((product) => ({
   value: product.id,
   label: product.name,
 }));
-const unitOptions = ["kg", "pcs"];
+const farmerSourceOptions = [
+  { label: "Dropdown Demo Plot", value: "demo_plot" },
+  { label: "Input Manual", value: "manual" },
+];
 
 const submitting = ref(false);
 const errors = ref({});
 
 const form = reactive({
+  farmer_source: "demo_plot",
+  demo_plot_id: null,
   product_id: null,
   farmer_name: "",
   land_area: null,
@@ -346,17 +341,33 @@ const form = reactive({
   harvest_age_days: null,
   harvest_quantity: null,
   harvest_unit: "kg",
-  total_pieces: null,
-  per_piece_quantity: null,
   is_multiple_harvest: false,
   harvest_cycles: [
-    { label: "K1", date: "", quantity: null, pieces: null },
+    { label: "K1", date: "", quantity: null },
   ],
-  location: "",
   strengths: "",
   weaknesses: "",
   notes: "",
   photoFile: null,
+});
+
+const demoPlotOptions = computed(() => {
+  const selectedProductId = Number(form.product_id || 0);
+  return demoPlots
+    .filter((item) => {
+      if (!selectedProductId) {
+        return true;
+      }
+      return Number(item.product_id) === selectedProductId;
+    })
+    .map((item) => ({
+      value: item.id,
+      label: `${item.owner_name || '-'} | ${item.product_name || '-'} | ${safeNumber(item.population, 0)} pcs`,
+    }));
+});
+
+const selectedDemoPlot = computed(() => {
+  return demoPlots.find((item) => Number(item.id) === Number(form.demo_plot_id || 0)) || null;
 });
 
 function firstError(value) {
@@ -373,23 +384,6 @@ const totalHarvestQuantity = computed(() => {
   return form.harvest_cycles.reduce((sum, cycle) => sum + Number(cycle.quantity || 0), 0);
 });
 
-const totalHarvestPieces = computed(() => {
-  if (!form.is_multiple_harvest) {
-    return Number(form.total_pieces || 0);
-  }
-  return form.harvest_cycles.reduce((sum, cycle) => sum + Number(cycle.pieces || 0), 0);
-});
-
-const estimatedPerPiece = computed(() => {
-  if (Number(form.per_piece_quantity) > 0) {
-    return Number(form.per_piece_quantity);
-  }
-  if (totalHarvestQuantity.value > 0 && totalHarvestPieces.value > 0) {
-    return totalHarvestQuantity.value / totalHarvestPieces.value;
-  }
-  return 0;
-});
-
 const estimatedProductivity = computed(() => {
   const land = Number(form.land_area || 0);
   if (land > 0 && totalHarvestQuantity.value > 0) {
@@ -398,35 +392,38 @@ const estimatedProductivity = computed(() => {
   return null;
 });
 
-const perPieceHint = computed(() => {
-  if (totalHarvestPieces.value > 0 && totalHarvestQuantity.value > 0) {
-    return `Estimasi otomatis: ${safeNumber(estimatedPerPiece.value, 4)} ${form.harvest_unit} per buah`;
-  }
-  return "Isi total panen dan total buah untuk estimasi otomatis.";
-});
-
 watch(
   () => form.is_multiple_harvest,
   (isMultiple) => {
     if (isMultiple) {
       form.harvest_quantity = Number(totalHarvestQuantity.value || 0);
-      form.total_pieces = Number(totalHarvestPieces.value || 0);
       if (form.harvest_cycles.length === 0) {
-        form.harvest_cycles.push({ label: "K1", date: "", quantity: null, pieces: null });
+        form.harvest_cycles.push({ label: "K1", date: "", quantity: null });
       }
     }
   }
 );
 
+watch(
+  () => form.farmer_source,
+  (source) => {
+    if (source === "manual") {
+      form.demo_plot_id = null;
+    }
+  }
+);
+
+watch(selectedDemoPlot, (plot) => {
+  if (!plot || form.farmer_source !== "demo_plot") {
+    return;
+  }
+  form.farmer_name = plot.owner_name || "";
+  form.product_id = plot.product_id || null;
+});
+
 watch(totalHarvestQuantity, (value) => {
   if (form.is_multiple_harvest) {
     form.harvest_quantity = Number(value || 0);
-  }
-});
-
-watch(totalHarvestPieces, (value) => {
-  if (form.is_multiple_harvest) {
-    form.total_pieces = Number(value || 0);
   }
 });
 
@@ -436,7 +433,6 @@ function addCycle() {
     label: `K${nextIndex}`,
     date: "",
     quantity: null,
-    pieces: null,
   });
 }
 
@@ -467,11 +463,10 @@ function resetForm() {
   form.harvest_age_days = null;
   form.harvest_quantity = null;
   form.harvest_unit = "kg";
-  form.total_pieces = null;
-  form.per_piece_quantity = null;
+  form.farmer_source = "demo_plot";
+  form.demo_plot_id = null;
   form.is_multiple_harvest = false;
-  form.harvest_cycles = [{ label: "K1", date: "", quantity: null, pieces: null }];
-  form.location = "";
+  form.harvest_cycles = [{ label: "K1", date: "", quantity: null }];
   form.strengths = "";
   form.weaknesses = "";
   form.notes = "";
@@ -489,17 +484,15 @@ async function submitHarvest() {
 
   try {
     const payload = new FormData();
+    payload.append("demo_plot_id", form.demo_plot_id ?? "");
     payload.append("product_id", form.product_id ?? "");
     payload.append("farmer_name", form.farmer_name || "");
     payload.append("land_area", form.land_area ?? "");
     payload.append("harvest_date", form.harvest_date || "");
     payload.append("harvest_age_days", form.harvest_age_days ?? "");
     payload.append("harvest_quantity", totalHarvestQuantity.value || 0);
-    payload.append("harvest_unit", form.harvest_unit || "kg");
-    payload.append("total_pieces", totalHarvestPieces.value || "");
-    payload.append("per_piece_quantity", form.per_piece_quantity ?? "");
+    payload.append("harvest_unit", "kg");
     payload.append("is_multiple_harvest", form.is_multiple_harvest ? 1 : 0);
-    payload.append("location", form.location || "");
     payload.append("strengths", form.strengths || "");
     payload.append("weaknesses", form.weaknesses || "");
     payload.append("notes", form.notes || "");
@@ -509,7 +502,6 @@ async function submitHarvest() {
         payload.append(`harvest_cycles[${index}][label]`, cycle.label || `K${index + 1}`);
         payload.append(`harvest_cycles[${index}][date]`, cycle.date || "");
         payload.append(`harvest_cycles[${index}][quantity]`, cycle.quantity ?? "");
-        payload.append(`harvest_cycles[${index}][pieces]`, cycle.pieces ?? "");
       });
     }
 
