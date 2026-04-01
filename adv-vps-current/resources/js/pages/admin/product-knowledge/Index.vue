@@ -244,6 +244,14 @@ function getPerTreeYield(item) {
 function getPhotoUrl(item) {
   const explicitUrl = String(item?.photo_url || "").trim();
   if (explicitUrl) {
+    if (explicitUrl.startsWith("http://") || explicitUrl.startsWith("https://")) {
+      try {
+        const parsed = new URL(explicitUrl);
+        return `${parsed.pathname}${parsed.search}`;
+      } catch (error) {
+        return explicitUrl;
+      }
+    }
     return explicitUrl;
   }
 
@@ -900,7 +908,13 @@ const isBs = page.props.auth?.user?.role === "bs";
                       :src="getPhotoUrl(item)"
                       ratio="4/3"
                       class="harvest-thumb compact"
-                    />
+                    >
+                      <template #error>
+                        <div class="harvest-no-thumb compact flex flex-center bg-grey-2">
+                          <q-icon name="broken_image" size="22px" color="grey-6" />
+                        </div>
+                      </template>
+                    </q-img>
                     <div v-else class="harvest-no-thumb compact flex flex-center bg-grey-2">
                       <q-icon name="agriculture" size="22px" color="grey-6" />
                     </div>
@@ -999,7 +1013,13 @@ const isBs = page.props.auth?.user?.role === "bs";
                           :src="getPhotoUrl(item)"
                           ratio="1"
                           class="table-thumb"
-                        />
+                        >
+                          <template #error>
+                            <div class="table-thumb table-thumb-empty flex flex-center">
+                              <q-icon name="broken_image" size="18px" color="grey-6" />
+                            </div>
+                          </template>
+                        </q-img>
                         <div v-else class="table-thumb table-thumb-empty flex flex-center">
                           <q-icon name="image_not_supported" size="18px" color="grey-6" />
                         </div>
@@ -1527,7 +1547,13 @@ const isBs = page.props.auth?.user?.role === "bs";
                 v-show="!$q.screen.lt.md || detailMobileTab === 'extra'"
               >
                 <q-card flat bordered class="q-mb-sm">
-                  <q-img :src="getPhotoUrl(selectedHarvest)" ratio="21/7" class="detail-photo-banner" />
+                  <q-img :src="getPhotoUrl(selectedHarvest)" ratio="21/7" class="detail-photo-banner">
+                    <template #error>
+                      <div class="detail-photo-banner flex flex-center bg-grey-2">
+                        <q-icon name="broken_image" size="36px" color="grey-6" />
+                      </div>
+                    </template>
+                  </q-img>
                 </q-card>
               </div>
               <div class="col-12 col-md-6" v-show="!$q.screen.lt.md || detailMobileTab === 'main'">
@@ -1564,7 +1590,13 @@ const isBs = page.props.auth?.user?.role === "bs";
                           :src="getPhotoUrl(selectedHarvest)"
                           ratio="4/3"
                           class="detail-inline-thumb"
-                        />
+                        >
+                          <template #error>
+                            <div class="detail-inline-thumb flex flex-center bg-grey-2">
+                              <q-icon name="broken_image" size="20px" color="grey-6" />
+                            </div>
+                          </template>
+                        </q-img>
                         <span v-else>-</span>
                       </div>
                       <div class="detail-key">Lokasi</div><div class="detail-val">{{ selectedHarvest.location || '-' }}</div>

@@ -222,11 +222,11 @@ class ProductKnowledgeController extends Controller
             $arr = $item->toArray();
             $rawPhotoPath = trim((string) ($arr['photo_path'] ?? ''));
             if ($rawPhotoPath !== '') {
-                $normalizedPhotoPath = ltrim($rawPhotoPath, '/');
+                $normalizedPhotoPath = str_replace('\\\\', '/', ltrim($rawPhotoPath, '/'));
                 if (str_starts_with($normalizedPhotoPath, 'public/')) {
                     $normalizedPhotoPath = substr($normalizedPhotoPath, 7);
                 }
-                $arr['photo_url'] = asset($normalizedPhotoPath);
+                $arr['photo_url'] = '/' . ltrim($normalizedPhotoPath, '/');
             } else {
                 $arr['photo_url'] = null;
             }
