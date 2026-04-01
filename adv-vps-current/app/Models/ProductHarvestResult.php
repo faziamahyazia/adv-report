@@ -22,6 +22,7 @@ class ProductHarvestResult extends Model
         'land_area',
         'altitude_mdpl',
         'total_pieces',
+        'germination_percentage',
         'location',
         'strengths',
         'weaknesses',
@@ -45,6 +46,7 @@ class ProductHarvestResult extends Model
         'land_area' => 'float',
         'altitude_mdpl' => 'integer',
         'total_pieces' => 'float',
+        'germination_percentage' => 'float',
         'created_by_uid' => 'integer',
         'updated_by_uid' => 'integer',
     ];

@@ -17,7 +17,7 @@ class ProductKnowledgeController extends Controller
     {
         return inertia('admin/product-knowledge/Index', [
             'categories' => ProductCategory::orderBy('name')->get(['id', 'name']),
-            'products' => Product::where('active', true)->orderBy('name')->get(['id', 'name', 'price_1', 'uom_1', 'price_2', 'uom_2']),
+            'products' => Product::where('active', true)->orderBy('name')->get(['id', 'name', 'jumlah_biji_per_pcs', 'price_1', 'uom_1', 'price_2', 'uom_2']),
         ]);
     }
 

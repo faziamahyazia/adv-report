@@ -46,7 +46,7 @@ class HarvestResultController extends Controller
         })->values();
 
         return inertia('admin/harvest-result/Index', [
-            'products' => Product::where('active', true)->orderBy('name')->get(['id', 'name']),
+            'products' => Product::where('active', true)->orderBy('name')->get(['id', 'name', 'jumlah_biji_per_pcs']),
             'demoPlots' => $demoPlots,
         ]);
     }
@@ -63,6 +63,8 @@ class HarvestResultController extends Controller
             'harvest_date' => 'required|date',
             'harvest_age_days' => 'nullable|integer|min:1|max:999',
             'harvest_quantity' => 'required|numeric|min:0',
+            'total_pieces' => 'nullable|numeric|min:0',
+            'germination_percentage' => 'nullable|numeric|min:0|max:100',
             'is_multiple_harvest' => 'nullable|boolean',
             'harvest_cycles' => 'nullable|array',
             'harvest_cycles.*.label' => 'nullable|string|max:10',
@@ -113,6 +115,16 @@ class HarvestResultController extends Controller
             $harvestQuantity = (float) $cycles->sum('quantity');
         }
 
+        $totalPieces = array_key_exists('total_pieces', $validated)
+            ? (float) $validated['total_pieces']
+            : (float) ($demoPlot?->population ?? 0);
+
+        if ($totalPieces <= 0 && $demoPlot?->population) {
+            $totalPieces = (float) $demoPlot->population;
+        }
+
+        $perPieceQuantity = $totalPieces > 0 ? ($harvestQuantity / $totalPieces) : null;
+
         $photoPath = null;
         if ($request->hasFile('photo')) {
             $manager = new ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
@@ -131,10 +143,11 @@ class HarvestResultController extends Controller
             'harvest_age_days' => $validated['harvest_age_days'] ?? null,
             'harvest_quantity' => $harvestQuantity,
             'harvest_unit' => 'kg',
-            'per_piece_quantity' => null,
+            'per_piece_quantity' => $perPieceQuantity,
             'is_multiple_harvest' => $isMultipleHarvest,
             'harvest_cycles' => $isMultipleHarvest ? $cycles->all() : null,
-            'total_pieces' => $demoPlot?->population,
+            'total_pieces' => $totalPieces > 0 ? $totalPieces : null,
+            'germination_percentage' => $validated['germination_percentage'] ?? null,
             'farmer_name' => $demoPlot?->owner_name ?? ($validated['farmer_name'] ?? null),
             'land_area' => $validated['land_area'] ?? null,
             'altitude_mdpl' => $validated['altitude_mdpl'] ?? null,
@@ -161,6 +174,8 @@ class HarvestResultController extends Controller
             'harvest_date' => 'required|date',
             'harvest_age_days' => 'nullable|integer|min:1|max:999',
             'harvest_quantity' => 'required|numeric|min:0',
+            'total_pieces' => 'nullable|numeric|min:0',
+            'germination_percentage' => 'nullable|numeric|min:0|max:100',
             'is_multiple_harvest' => 'nullable|boolean',
             'harvest_cycles' => 'nullable|array',
             'harvest_cycles.*.label' => 'nullable|string|max:10',
@@ -215,6 +230,16 @@ class HarvestResultController extends Controller
             $harvestQuantity = (float) $cycles->sum('quantity');
         }
 
+        $totalPieces = array_key_exists('total_pieces', $validated)
+            ? (float) $validated['total_pieces']
+            : (float) ($demoPlot?->population ?? $item->total_pieces ?? 0);
+
+        if ($totalPieces <= 0 && $demoPlot?->population) {
+            $totalPieces = (float) $demoPlot->population;
+        }
+
+        $perPieceQuantity = $totalPieces > 0 ? ($harvestQuantity / $totalPieces) : null;
+
         $photoPath = $item->photo_path;
         if ($request->hasFile('photo')) {
             if ($photoPath && file_exists(public_path($photoPath))) {
@@ -237,9 +262,11 @@ class HarvestResultController extends Controller
             'harvest_age_days' => $validated['harvest_age_days'] ?? null,
             'harvest_quantity' => $harvestQuantity,
             'harvest_unit' => 'kg',
+            'per_piece_quantity' => $perPieceQuantity,
             'is_multiple_harvest' => $isMultipleHarvest,
             'harvest_cycles' => $isMultipleHarvest ? $cycles->all() : null,
-            'total_pieces' => $demoPlot?->population ?? $item->total_pieces,
+            'total_pieces' => $totalPieces > 0 ? $totalPieces : null,
+            'germination_percentage' => $validated['germination_percentage'] ?? $item->germination_percentage,
             'farmer_name' => $demoPlot?->owner_name ?? ($validated['farmer_name'] ?? null),
             'land_area' => $validated['land_area'] ?? null,
             'altitude_mdpl' => $validated['altitude_mdpl'] ?? null,

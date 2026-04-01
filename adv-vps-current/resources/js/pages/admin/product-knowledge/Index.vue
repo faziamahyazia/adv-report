@@ -56,6 +56,8 @@ const editForm = reactive({
   harvest_date: "",
   harvest_age_days: null,
   harvest_quantity: null,
+  total_pieces: null,
+  germination_percentage: null,
   is_multiple_harvest: false,
   land_area: null,
   altitude_mdpl: null,
@@ -172,6 +174,11 @@ const selectedHarvestMetrics = computed(() => {
   const product = productById.value.get(Number(item.product_id || 0));
   const pricePerPcs = pickPriceByUom(product, "pcs");
   const pricePerKg = pickPriceByUom(product, "kg");
+  const seedsPerPiece = Number(product?.jumlah_biji_per_pcs || 0);
+  const germination = Number(item.germination_percentage || 0);
+  const totalSeedCount = (seedsPerPiece > 0 && totalPcs > 0) ? (seedsPerPiece * totalPcs) : null;
+  const estimatedGrownPlants = (totalSeedCount && germination > 0) ? (totalSeedCount * (germination / 100)) : null;
+  const productivityPerGrownPlant = (estimatedGrownPlants && qty > 0) ? (qty / estimatedGrownPlants) : null;
 
   const estimatedRevenueFromPcs = (pricePerPcs && totalPcs > 0)
     ? (pricePerPcs * totalPcs)
@@ -188,6 +195,11 @@ const selectedHarvestMetrics = computed(() => {
     perPieceYield,
     perTreeYield,
     productivity,
+    seedsPerPiece,
+    totalSeedCount,
+    germination,
+    estimatedGrownPlants,
+    productivityPerGrownPlant,
     pricePerPcs,
     estimatedRevenue,
     estimatedRevenuePerPcs: (estimatedRevenue && totalPcs > 0) ? (estimatedRevenue / totalPcs) : null,
@@ -409,6 +421,8 @@ function resetEditForm(item) {
   editForm.harvest_date = item?.harvest_date ? String(item.harvest_date).slice(0, 10) : "";
   editForm.harvest_age_days = item?.harvest_age_days ?? null;
   editForm.harvest_quantity = item?.harvest_quantity ?? null;
+  editForm.total_pieces = item?.total_pieces ?? null;
+  editForm.germination_percentage = item?.germination_percentage ?? null;
   editForm.is_multiple_harvest = Boolean(item?.is_multiple_harvest);
   editForm.land_area = item?.land_area ?? null;
   editForm.altitude_mdpl = item?.altitude_mdpl ?? null;
@@ -429,6 +443,8 @@ async function saveHarvestEdit() {
     formData.append("product_id", String(editForm.product_id || selectedHarvest.value.product_id || ""));
     formData.append("harvest_date", editForm.harvest_date || "");
     formData.append("harvest_quantity", String(editForm.harvest_quantity ?? 0));
+    formData.append("total_pieces", String(editForm.total_pieces ?? ""));
+    formData.append("germination_percentage", String(editForm.germination_percentage ?? ""));
     formData.append("is_multiple_harvest", editForm.is_multiple_harvest ? "1" : "0");
 
     if (editForm.demo_plot_id) formData.append("demo_plot_id", String(editForm.demo_plot_id));
@@ -1002,6 +1018,12 @@ const isBs = page.props.auth?.user?.role === "bs";
                     <q-input v-model.number="editForm.harvest_quantity" type="number" min="0" step="0.01" dense outlined label="Total Panen (kg)" />
                   </div>
                   <div class="col-12 col-md-3">
+                    <q-input v-model.number="editForm.total_pieces" type="number" min="0" step="1" dense outlined label="Qty Panen (PCS)" />
+                  </div>
+                  <div class="col-12 col-md-3">
+                    <q-input v-model.number="editForm.germination_percentage" type="number" min="0" max="100" step="0.01" dense outlined label="DB / Germinasi (%)" />
+                  </div>
+                  <div class="col-12 col-md-3">
                     <q-input v-model.number="editForm.harvest_age_days" type="number" min="1" dense outlined label="Umur Panen (hari)" />
                   </div>
                   <div class="col-12 col-md-3">
@@ -1055,6 +1077,12 @@ const isBs = page.props.auth?.user?.role === "bs";
                     <div class="detail-metric-card">
                       <div class="detail-metric-label">Hasil per PCS</div>
                       <div class="detail-metric-value">{{ selectedHarvestMetrics.perPieceYield ? `${formatNumber(selectedHarvestMetrics.perPieceYield, 4)} ${selectedHarvest.harvest_unit || 'kg'}` : '-' }}</div>
+                    </div>
+                  </div>
+                  <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+                    <div class="detail-metric-card">
+                      <div class="detail-metric-label">Estimasi Tumbuh</div>
+                      <div class="detail-metric-value">{{ selectedHarvestMetrics.estimatedGrownPlants ? `${formatNumber(selectedHarvestMetrics.estimatedGrownPlants, 0)} pohon` : '-' }}</div>
                     </div>
                   </div>
                   <div class="col-12 col-sm-6 col-md-4 col-lg-2">
@@ -1121,7 +1149,12 @@ const isBs = page.props.auth?.user?.role === "bs";
                       <div class="detail-key">Lokasi</div><div class="detail-val">{{ selectedHarvest.location || '-' }}</div>
                       <div class="detail-key">Populasi Demo Plot</div><div class="detail-val">{{ selectedHarvest.demo_plot?.population ? `${formatNumber(selectedHarvest.demo_plot.population, 0)} pohon` : '-' }}</div>
                       <div class="detail-key">Total PCS</div><div class="detail-val">{{ selectedHarvest.total_pieces ? formatNumber(selectedHarvest.total_pieces, 0) : '-' }}</div>
-                      <div class="detail-key">Hasil per PCS</div><div class="detail-val">{{ selectedHarvest.per_piece_quantity ? `${formatNumber(selectedHarvest.per_piece_quantity, 4)} ${selectedHarvest.harvest_unit || 'kg'}` : '-' }}</div>
+                      <div class="detail-key">DB / Germinasi</div><div class="detail-val">{{ selectedHarvest.germination_percentage ? `${formatNumber(selectedHarvest.germination_percentage, 2)} %` : '-' }}</div>
+                      <div class="detail-key">Biji per PCS</div><div class="detail-val">{{ selectedHarvestMetrics?.seedsPerPiece ? `${formatNumber(selectedHarvestMetrics.seedsPerPiece, 0)} biji` : '-' }}</div>
+                      <div class="detail-key">Total Biji</div><div class="detail-val">{{ selectedHarvestMetrics?.totalSeedCount ? `${formatNumber(selectedHarvestMetrics.totalSeedCount, 0)} biji` : '-' }}</div>
+                      <div class="detail-key">Estimasi Tumbuh</div><div class="detail-val">{{ selectedHarvestMetrics?.estimatedGrownPlants ? `${formatNumber(selectedHarvestMetrics.estimatedGrownPlants, 0)} pohon` : '-' }}</div>
+                      <div class="detail-key">Hasil per PCS</div><div class="detail-val">{{ selectedHarvestMetrics?.perPieceYield ? `${formatNumber(selectedHarvestMetrics.perPieceYield, 4)} ${selectedHarvest.harvest_unit || 'kg'}` : '-' }}</div>
+                      <div class="detail-key">Produktivitas per Tanaman Tumbuh</div><div class="detail-val">{{ selectedHarvestMetrics?.productivityPerGrownPlant ? `${formatNumber(selectedHarvestMetrics.productivityPerGrownPlant, 4)} ${selectedHarvest.harvest_unit || 'kg'}/pohon` : '-' }}</div>
                       <div class="detail-key">Mode Panen</div><div class="detail-val">{{ selectedHarvest.is_multiple_harvest ? 'Beberapa Kali Panen' : 'Sekali Panen' }}</div>
                       <div class="detail-key">Penginput</div><div class="detail-val">{{ selectedHarvest.created_by?.name || '-' }}</div>
                       <div class="detail-key">Waktu Input</div><div class="detail-val">{{ formatDateTime(selectedHarvest.created_datetime) }}</div>

@@ -159,6 +159,36 @@
 
                 <div class="col-12 col-md-6 col-xl-3">
                   <q-input
+                    v-model.number="form.total_pieces"
+                    type="number"
+                    outlined
+                    dense
+                    label="Qty Panen (PCS)"
+                    min="0"
+                    step="1"
+                    :error="Boolean(errors.total_pieces)"
+                    :error-message="firstError(errors.total_pieces)"
+                  />
+                </div>
+
+                <div class="col-12 col-md-6 col-xl-3">
+                  <q-input
+                    v-model.number="form.germination_percentage"
+                    type="number"
+                    outlined
+                    dense
+                    label="DB / Germinasi (%)"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    hint="Contoh: 85 berarti 85% biji tumbuh"
+                    :error="Boolean(errors.germination_percentage)"
+                    :error-message="firstError(errors.germination_percentage)"
+                  />
+                </div>
+
+                <div class="col-12 col-md-6 col-xl-3">
+                  <q-input
                     :model-value="selectedDemoPlot ? safeNumber(selectedDemoPlot.population, 0) : '-'"
                     type="number"
                     outlined
@@ -297,6 +327,39 @@
                   <q-item-section side>{{ safeNumber(totalHarvestQuantity, 2) }} kg</q-item-section>
                 </q-item>
                 <q-item>
+                  <q-item-section>Qty Panen</q-item-section>
+                  <q-item-section side>{{ form.total_pieces ? safeNumber(form.total_pieces, 0) : '-' }} PCS</q-item-section>
+                </q-item>
+                <q-item>
+                  <q-item-section>Hasil per PCS</q-item-section>
+                  <q-item-section side>
+                    <span v-if="estimatedPerPieceYield !== null">{{ safeNumber(estimatedPerPieceYield, 2) }} kg</span>
+                    <span v-else>-</span>
+                  </q-item-section>
+                </q-item>
+                <q-item>
+                  <q-item-section>Biji per PCS</q-item-section>
+                  <q-item-section side>{{ seedsPerPiece > 0 ? `${safeNumber(seedsPerPiece, 0)} biji` : '-' }}</q-item-section>
+                </q-item>
+                <q-item>
+                  <q-item-section>Total Biji</q-item-section>
+                  <q-item-section side>{{ totalSeedCount !== null ? `${safeNumber(totalSeedCount, 0)} biji` : '-' }}</q-item-section>
+                </q-item>
+                <q-item>
+                  <q-item-section>Estimasi Tumbuh</q-item-section>
+                  <q-item-section side>
+                    <span v-if="estimatedGrownPlants !== null">{{ safeNumber(estimatedGrownPlants, 0) }} pohon</span>
+                    <span v-else>-</span>
+                  </q-item-section>
+                </q-item>
+                <q-item>
+                  <q-item-section>Produktivitas per Tanaman Tumbuh</q-item-section>
+                  <q-item-section side>
+                    <span v-if="productivityPerGrownPlant !== null">{{ safeNumber(productivityPerGrownPlant, 4) }} kg/pohon</span>
+                    <span v-else>-</span>
+                  </q-item-section>
+                </q-item>
+                <q-item>
                   <q-item-section>Populasi Tanam</q-item-section>
                   <q-item-section side>{{ selectedDemoPlot ? safeNumber(selectedDemoPlot.population, 0) : '-' }} pohon</q-item-section>
                 </q-item>
@@ -344,7 +407,9 @@ const products = page.props.products ?? [];
 const demoPlots = page.props.demoPlots ?? [];
 const productOptions = products.map((product) => ({
   value: product.id,
-  label: product.name,
+  label: product.jumlah_biji_per_pcs
+    ? `${product.name} (${safeNumber(product.jumlah_biji_per_pcs, 0)} biji/pcs)`
+    : product.name,
 }));
 const farmerSourceOptions = [
   { label: "Dropdown Demo Plot", value: "demo_plot" },
@@ -364,6 +429,8 @@ const form = reactive({
   harvest_date: "",
   harvest_age_days: null,
   harvest_quantity: null,
+  total_pieces: null,
+  germination_percentage: null,
   harvest_unit: "kg",
   is_multiple_harvest: false,
   harvest_cycles: [
@@ -394,6 +461,14 @@ const selectedDemoPlot = computed(() => {
   return demoPlots.find((item) => Number(item.id) === Number(form.demo_plot_id || 0)) || null;
 });
 
+const selectedProduct = computed(() => {
+  return products.find((item) => Number(item.id) === Number(form.product_id || 0)) || null;
+});
+
+const seedsPerPiece = computed(() => {
+  return Number(selectedProduct.value?.jumlah_biji_per_pcs || 0);
+});
+
 function firstError(value) {
   if (Array.isArray(value)) {
     return value[0] || "";
@@ -412,6 +487,37 @@ const estimatedProductivity = computed(() => {
   const land = Number(form.land_area || 0);
   if (land > 0 && totalHarvestQuantity.value > 0) {
     return totalHarvestQuantity.value / land;
+  }
+  return null;
+});
+
+const estimatedPerPieceYield = computed(() => {
+  const pieces = Number(form.total_pieces || 0);
+  if (pieces > 0 && totalHarvestQuantity.value > 0) {
+    return totalHarvestQuantity.value / pieces;
+  }
+  return null;
+});
+
+const totalSeedCount = computed(() => {
+  const pieces = Number(form.total_pieces || 0);
+  if (pieces > 0 && seedsPerPiece.value > 0) {
+    return pieces * seedsPerPiece.value;
+  }
+  return null;
+});
+
+const estimatedGrownPlants = computed(() => {
+  const germination = Number(form.germination_percentage || 0);
+  if (totalSeedCount.value !== null && germination > 0) {
+    return totalSeedCount.value * (germination / 100);
+  }
+  return null;
+});
+
+const productivityPerGrownPlant = computed(() => {
+  if (estimatedGrownPlants.value && estimatedGrownPlants.value > 0 && totalHarvestQuantity.value > 0) {
+    return totalHarvestQuantity.value / estimatedGrownPlants.value;
   }
   return null;
 });
@@ -465,6 +571,7 @@ watch(selectedDemoPlot, (plot) => {
   }
   form.farmer_name = plot.owner_name || "";
   form.product_id = plot.product_id || null;
+  form.total_pieces = Number(plot.population || 0) || null;
 
   const referenceDate = form.harvest_date || dayjs().format("YYYY-MM-DD");
   if (plot.plant_date) {
@@ -526,6 +633,8 @@ function resetForm() {
   form.harvest_date = "";
   form.harvest_age_days = null;
   form.harvest_quantity = null;
+  form.total_pieces = null;
+  form.germination_percentage = null;
   form.harvest_unit = "kg";
   form.farmer_source = "demo_plot";
   form.demo_plot_id = null;
@@ -556,6 +665,8 @@ async function submitHarvest() {
     payload.append("harvest_date", form.harvest_date || "");
     payload.append("harvest_age_days", form.harvest_age_days ?? "");
     payload.append("harvest_quantity", totalHarvestQuantity.value || 0);
+    payload.append("total_pieces", form.total_pieces ?? "");
+    payload.append("germination_percentage", form.germination_percentage ?? "");
     payload.append("harvest_unit", "kg");
     payload.append("is_multiple_harvest", form.is_multiple_harvest ? 1 : 0);
     payload.append("strengths", form.strengths || "");
