@@ -151,6 +151,7 @@ class ProductKnowledgeController extends Controller
             $search = trim($filter['search']);
             $q->where(function ($inner) use ($search) {
                 $inner->where('location', 'like', '%' . $search . '%')
+                    ->orWhere('farmer_name', 'like', '%' . $search . '%')
                     ->orWhere('strengths', 'like', '%' . $search . '%')
                     ->orWhere('weaknesses', 'like', '%' . $search . '%')
                     ->orWhere('notes', 'like', '%' . $search . '%')
@@ -172,47 +173,8 @@ class ProductKnowledgeController extends Controller
 
     public function harvestStore(Request $request)
     {
-        if ($request->user()->role !== User::Role_BS) {
-            abort(403, 'Hanya BS yang dapat input data hasil panen.');
-        }
-
-        $validated = $request->validate([
-            'product_id' => 'required|exists:products,id',
-            'harvest_date' => 'required|date',
-            'harvest_age_days' => 'nullable|integer|min:1|max:999',
-            'harvest_quantity' => 'nullable|numeric|min:0',
-            'harvest_unit' => 'nullable|string|max:30',
-            'location' => 'nullable|string|max:255',
-            'strengths' => 'nullable|string',
-            'weaknesses' => 'nullable|string',
-            'notes' => 'nullable|string',
-            'photo' => 'nullable|image|max:10240',
-        ]);
-
-        $photoPath = null;
-        if ($request->hasFile('photo')) {
-            $manager = new ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
-            $filename = 'harvest_' . time() . '_' . uniqid() . '.jpg';
-            $photoPath = 'uploads/' . $filename;
-
-            $image = $manager->read($request->file('photo'));
-            $image->scaleDown(1600, 1600);
-            $image->toJpeg(82)->save(public_path($photoPath));
-        }
-
-        ProductHarvestResult::create([
-            'product_id' => $validated['product_id'],
-            'harvest_date' => $validated['harvest_date'],
-            'harvest_age_days' => $validated['harvest_age_days'] ?? null,
-            'harvest_quantity' => $validated['harvest_quantity'] ?? null,
-            'harvest_unit' => $validated['harvest_unit'] ?? 'kg/ha',
-            'location' => $validated['location'] ?? null,
-            'strengths' => $validated['strengths'] ?? null,
-            'weaknesses' => $validated['weaknesses'] ?? null,
-            'notes' => $validated['notes'] ?? null,
-            'photo_path' => $photoPath,
-        ]);
-
-        return response()->json(['message' => 'Data hasil panen berhasil disimpan.']);
+        // Method ini sekarang di HarvestResultController - untuk backward compatibility jika masih diakses
+        return response()->json(['message' => 'Method tidak tersedia di sini.'], 410);
     }
+
 }

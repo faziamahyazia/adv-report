@@ -743,7 +743,8 @@ onMounted(() => {
               $can('admin.customer.index') ||
               $can('admin.product.index') ||
               $can('admin.product-category.index') ||
-              $can('admin.product-knowledge.index')
+              $can('admin.product-knowledge.index') ||
+              $can('admin.harvest-result.index')
             "
             v-model="menuGroups.master"
             icon="inventory_2"
@@ -753,7 +754,8 @@ onMounted(() => {
             :header-class="$page.url.startsWith('/admin/customers') ||
               $page.url.startsWith('/admin/products') ||
               $page.url.startsWith('/admin/product-categories') ||
-              $page.url.startsWith('/admin/product-knowledge')
+              $page.url.startsWith('/admin/product-knowledge') ||
+              $page.url.startsWith('/admin/harvest-result')
               ? 'text-primary'
               : ''"
           >
@@ -811,6 +813,20 @@ onMounted(() => {
               </q-item-section>
               <q-item-section>
                 <q-item-label>Product Knowledge</q-item-label>
+              </q-item-section>
+            </q-item>
+            <q-item
+              v-if="$can('admin.harvest-result.index')"
+              clickable
+              v-ripple
+              :active="$page.url.startsWith('/admin/harvest-result')"
+              @click="router.get(route('admin.harvest-result.index'))"
+            >
+              <q-item-section avatar>
+                <q-icon name="agriculture" />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label>Hasil Panen</q-item-label>
               </q-item-section>
             </q-item>
           </q-expansion-item>

@@ -17,6 +17,7 @@ use App\Http\Controllers\Admin\DemoPlotVisitController;
 use App\Http\Controllers\Admin\DistributorController;
 use App\Http\Controllers\Admin\DistributorStockController;
 use App\Http\Controllers\Admin\DistributorTargetController;
+use App\Http\Controllers\Admin\HarvestResultController;
 use App\Http\Controllers\Admin\InventoryLogController;
 use App\Http\Controllers\Admin\NotificationController;
 use App\Http\Controllers\Admin\ProductCategoryController;
@@ -119,6 +120,11 @@ Route::middleware([Auth::class])->group(function () {
                 Route::post('{id}/photo-save', [ProductKnowledgeController::class, 'photoSave'])->name('admin.product-knowledge.photo-save');
                 Route::post('{id}/set-thumbnail/{photoId}', [ProductKnowledgeController::class, 'setThumbnail'])->name('admin.product-knowledge.set-thumbnail');
                 Route::post('photo-delete/{photoId}', [ProductKnowledgeController::class, 'photoDelete'])->name('admin.product-knowledge.photo-delete');
+            });
+
+            Route::prefix('harvest-result')->group(function () {
+                Route::get('', [HarvestResultController::class, 'index'])->name('admin.harvest-result.index');
+                Route::post('', [HarvestResultController::class, 'store'])->name('admin.harvest-result.store');
             });
 
             Route::prefix('customers')->group(function () {

@@ -31,26 +31,8 @@ const harvestFilter = reactive({
   product_id: "all",
 });
 
-const todayIso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
-  .toISOString()
-  .slice(0, 10);
-
-const harvestForm = reactive({
-  product_id: null,
-  harvest_date: todayIso,
-  harvest_age_days: null,
-  harvest_quantity: null,
-  harvest_unit: "kg/ha",
-  location: "",
-  strengths: "",
-  weaknesses: "",
-  notes: "",
-  photo: null,
-});
-
 const harvestItems = ref([]);
 const harvestLoading = ref(false);
-const harvestSubmitting = ref(false);
 
 async function fetchProducts() {
   loading.value = true;
@@ -76,61 +58,7 @@ async function fetchHarvests() {
   }
 }
 
-function resetHarvestForm() {
-  harvestForm.product_id = null;
-  harvestForm.harvest_date = todayIso;
-  harvestForm.harvest_age_days = null;
-  harvestForm.harvest_quantity = null;
-  harvestForm.harvest_unit = "kg/ha";
-  harvestForm.location = "";
-  harvestForm.strengths = "";
-  harvestForm.weaknesses = "";
-  harvestForm.notes = "";
-  harvestForm.photo = null;
-}
 
-async function submitHarvest() {
-  if (harvestSubmitting.value) {
-    return;
-  }
-
-  harvestSubmitting.value = true;
-  try {
-    const formData = new FormData();
-    formData.append("product_id", harvestForm.product_id ?? "");
-    formData.append("harvest_date", harvestForm.harvest_date ?? "");
-    formData.append("harvest_age_days", harvestForm.harvest_age_days ?? "");
-    formData.append("harvest_quantity", harvestForm.harvest_quantity ?? "");
-    formData.append("harvest_unit", harvestForm.harvest_unit ?? "");
-    formData.append("location", harvestForm.location ?? "");
-    formData.append("strengths", harvestForm.strengths ?? "");
-    formData.append("weaknesses", harvestForm.weaknesses ?? "");
-    formData.append("notes", harvestForm.notes ?? "");
-    if (harvestForm.photo) {
-      formData.append("photo", harvestForm.photo);
-    }
-
-    const res = await axios.post(route("admin.product-knowledge.harvest-store"), formData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-    });
-
-    $q.notify({
-      type: "positive",
-      message: res?.data?.message ?? "Data hasil panen berhasil disimpan.",
-      position: "top",
-    });
-
-    resetHarvestForm();
-    await fetchHarvests();
-  } catch (error) {
-    const msg = error?.response?.data?.message ?? "Gagal menyimpan data hasil panen.";
-    $q.notify({ type: "negative", message: msg, position: "top" });
-  } finally {
-    harvestSubmitting.value = false;
-  }
-}
 
 function formatDate(value) {
   if (!value) {
@@ -320,128 +248,6 @@ const isBs = page.props.auth?.user?.role === "bs";
     </div>
 
     <div v-else class="q-pa-sm">
-      <q-card v-if="isBs" flat bordered class="q-mb-md">
-        <q-card-section class="text-subtitle1 text-weight-medium">
-          Input Data Hasil Panen
-        </q-card-section>
-        <q-card-section>
-          <div class="row q-col-gutter-sm">
-            <div class="col-12 col-md-4">
-              <q-select
-                v-model="harvestForm.product_id"
-                :options="availableProducts.map((p) => ({ value: p.id, label: p.name }))"
-                option-value="value"
-                option-label="label"
-                emit-value
-                map-options
-                outlined
-                dense
-                label="Varietas Produk *"
-              />
-            </div>
-            <div class="col-12 col-md-4">
-              <q-input
-                v-model="harvestForm.harvest_date"
-                type="date"
-                outlined
-                dense
-                label="Tanggal Panen *"
-              />
-            </div>
-            <div class="col-12 col-md-4">
-              <q-input
-                v-model.number="harvestForm.harvest_age_days"
-                type="number"
-                outlined
-                dense
-                label="Umur Panen (hari)"
-                min="1"
-              />
-            </div>
-
-            <div class="col-12 col-md-4">
-              <q-input
-                v-model.number="harvestForm.harvest_quantity"
-                type="number"
-                step="0.01"
-                outlined
-                dense
-                label="Hasil Panen"
-                min="0"
-              />
-            </div>
-            <div class="col-12 col-md-4">
-              <q-input
-                v-model="harvestForm.harvest_unit"
-                outlined
-                dense
-                label="Satuan (contoh: kg/ha)"
-              />
-            </div>
-            <div class="col-12 col-md-4">
-              <q-input
-                v-model="harvestForm.location"
-                outlined
-                dense
-                label="Lokasi"
-              />
-            </div>
-
-            <div class="col-12 col-md-6">
-              <q-input
-                v-model="harvestForm.strengths"
-                outlined
-                dense
-                type="textarea"
-                autogrow
-                label="Kekuatan Produk"
-              />
-            </div>
-            <div class="col-12 col-md-6">
-              <q-input
-                v-model="harvestForm.weaknesses"
-                outlined
-                dense
-                type="textarea"
-                autogrow
-                label="Kelemahan Produk"
-              />
-            </div>
-
-            <div class="col-12 col-md-6">
-              <q-input
-                v-model="harvestForm.notes"
-                outlined
-                dense
-                type="textarea"
-                autogrow
-                label="Catatan Tambahan"
-              />
-            </div>
-            <div class="col-12 col-md-6">
-              <q-file
-                v-model="harvestForm.photo"
-                outlined
-                dense
-                label="Foto Hasil Panen"
-                accept="image/*"
-                clearable
-              />
-            </div>
-          </div>
-        </q-card-section>
-        <q-card-actions align="right" class="q-px-md q-pb-md">
-          <q-btn flat color="grey-7" label="Reset" @click="resetHarvestForm" />
-          <q-btn
-            color="primary"
-            label="Simpan Data"
-            :loading="harvestSubmitting"
-            :disable="!harvestForm.product_id || !harvestForm.harvest_date"
-            @click="submitHarvest"
-          />
-        </q-card-actions>
-      </q-card>
-
       <div v-if="harvestLoading" class="row q-col-gutter-sm">
         <div v-for="n in 6" :key="n" class="col-12 col-md-6 col-lg-4">
           <q-skeleton height="160px" />
@@ -465,6 +271,9 @@ const isBs = page.props.auth?.user?.role === "bs";
             <q-card-section>
               <div class="text-subtitle2 text-weight-medium">{{ item.product?.name || '-' }}</div>
               <div class="text-caption text-grey-7 q-mt-xs">
+                Nama Petani: <b>{{ item.farmer_name || '-' }}</b>
+              </div>
+              <div class="text-caption text-grey-7">
                 Diinput oleh: <b>{{ item.created_by?.name || '-' }}</b>
               </div>
               <div class="text-caption text-grey-7">
@@ -473,19 +282,36 @@ const isBs = page.props.auth?.user?.role === "bs";
 
               <div class="q-mt-sm text-body2">
                 <div><b>Tanggal Panen:</b> {{ formatDate(item.harvest_date) }}</div>
-                <div><b>Umur Panen:</b> {{ item.harvest_age_days ? item.harvest_age_days + ' hari' : '-' }}</div>
-                <div>
-                  <b>Hasil Panen:</b>
-                  {{ item.harvest_quantity !== null ? item.harvest_quantity + ' ' + (item.harvest_unit || '') : '-' }}
+                <div v-if="item.harvest_age_days"><b>Umur Panen:</b> {{ item.harvest_age_days }} hari</div>
+                <div v-if="item.land_area"><b>Luas Lahan:</b> {{ item.land_area }} m²</div>
+                <div v-if="item.is_multiple_harvest" class="text-primary">
+                  <q-icon name="cached" size="16px" /> Beberapa kali panen
                 </div>
-                <div><b>Lokasi:</b> {{ item.location || '-' }}</div>
+                <div class="q-mt-xs">
+                  <b>Total Hasil:</b> {{ item.harvest_quantity }} {{ item.harvest_unit }}
+                </div>
               </div>
 
+              <!-- Summary Calculation -->
               <q-separator class="q-my-sm" />
+              <div class="text-body2 bg-blue-50 q-pa-xs rounded">
+                <div v-if="item.land_area && item.harvest_quantity" class="text-info">
+                  <b>Produktivitas:</b> {{ (item.harvest_quantity / item.land_area).toFixed(2) }} {{ item.harvest_unit }}/m²
+                </div>
+                <div v-if="item.total_pieces && item.harvest_quantity" class="text-info">
+                  <b>Per Buah:</b> {{ (item.harvest_quantity / item.total_pieces).toFixed(4) }} {{ item.harvest_unit }}
+                </div>
+                <div v-if="item.per_piece_quantity" class="text-info">
+                  <b>Per Satuan:</b> {{ item.per_piece_quantity }} {{ item.harvest_unit }}
+                </div>
+              </div>
 
-              <div class="text-body2"><b>Kekuatan:</b> {{ item.strengths || '-' }}</div>
-              <div class="text-body2 q-mt-xs"><b>Kelemahan:</b> {{ item.weaknesses || '-' }}</div>
-              <div class="text-body2 q-mt-xs"><b>Catatan:</b> {{ item.notes || '-' }}</div>
+              <q-separator class="q-my-sm" v-if="item.strengths || item.weaknesses || item.notes" />
+
+              <div v-if="item.strengths" class="text-body2"><b>Kekuatan:</b> {{ item.strengths }}</div>
+              <div v-if="item.weaknesses" class="text-body2 q-mt-xs"><b>Kelemahan:</b> {{ item.weaknesses }}</div>
+              <div v-if="item.notes" class="text-body2 q-mt-xs"><b>Catatan:</b> {{ item.notes }}</div>
+              <div v-if="item.location" class="text-body2 q-mt-xs"><b>Lokasi:</b> {{ item.location }}</div>
             </q-card-section>
           </q-card>
         </div>

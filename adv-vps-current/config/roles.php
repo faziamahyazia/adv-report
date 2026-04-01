@@ -19,6 +19,9 @@ return [
         'admin.product-knowledge.harvest-store',
         'admin.product-knowledge.gallery',
 
+        'admin.harvest-result.index',
+        'admin.harvest-result.store',
+
         'admin.demo-plot.index',
         'admin.demo-plot.data',
         'admin.demo-plot.detail',
