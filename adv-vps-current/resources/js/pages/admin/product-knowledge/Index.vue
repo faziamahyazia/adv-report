@@ -4,10 +4,12 @@ import { router, usePage } from "@inertiajs/vue3";
 import AuthenticatedLayout from "@/layouts/AuthenticatedLayout.vue";
 import axios from "axios";
 import { useQuasar } from "quasar";
+import dayjs from "dayjs";
 
 const page = usePage();
 const categories = page.props.categories ?? [];
 const availableProducts = page.props.products ?? [];
+const demoPlots = page.props.demoPlots ?? [];
 const $q = useQuasar();
 
 const activeTab = ref("gallery");
@@ -24,6 +26,11 @@ const categoryOptions = [
 const productOptions = [
   { value: "all", label: "Semua Varietas" },
   ...availableProducts.map((p) => ({ value: p.id, label: p.name })),
+];
+
+const farmerSourceOptions = [
+  { label: "Dropdown Demo Plot", value: "demo_plot" },
+  { label: "Input Manual", value: "manual" },
 ];
 
 const altitudeZoneOptions = [
@@ -48,8 +55,10 @@ const editMode = ref(false);
 const savingEdit = ref(false);
 const deletingItem = ref(false);
 const editPhotoFile = ref(null);
+const editErrors = ref({});
 
 const editForm = reactive({
+  farmer_source: "demo_plot",
   product_id: null,
   demo_plot_id: null,
   farmer_name: "",
@@ -59,6 +68,9 @@ const editForm = reactive({
   total_pieces: null,
   germination_percentage: null,
   is_multiple_harvest: false,
+  harvest_cycles: [
+    { label: "K1", date: "", quantity: null },
+  ],
   land_area: null,
   altitude_mdpl: null,
   strengths: "",
@@ -73,6 +85,39 @@ const productById = computed(() => {
   });
   return map;
 });
+
+const editDemoPlotOptions = computed(() => {
+  const selectedProductId = Number(editForm.product_id || 0);
+  return demoPlots
+    .filter((item) => {
+      if (!selectedProductId) {
+        return true;
+      }
+      return Number(item.product_id) === selectedProductId;
+    })
+    .map((item) => ({
+      value: item.id,
+      label: `${item.owner_name || '-'} | ${item.product_name || '-'} | ${formatNumber(item.population, 0)} pohon`,
+    }));
+});
+
+const editSelectedDemoPlot = computed(() => {
+  return demoPlots.find((item) => Number(item.id) === Number(editForm.demo_plot_id || 0)) || null;
+});
+
+const editTotalHarvestQuantity = computed(() => {
+  if (!editForm.is_multiple_harvest) {
+    return Number(editForm.harvest_quantity || 0);
+  }
+  return editForm.harvest_cycles.reduce((sum, cycle) => sum + Number(cycle.quantity || 0), 0);
+});
+
+function firstError(value) {
+  if (Array.isArray(value)) {
+    return value[0] || "";
+  }
+  return value || "";
+}
 
 async function fetchProducts() {
   loading.value = true;
@@ -415,6 +460,7 @@ function openHarvestEdit(item) {
 }
 
 function resetEditForm(item) {
+  editForm.farmer_source = item?.demo_plot_id ? "demo_plot" : "manual";
   editForm.product_id = item?.product_id ?? null;
   editForm.demo_plot_id = item?.demo_plot_id ?? null;
   editForm.farmer_name = item?.farmer_name || "";
@@ -424,12 +470,90 @@ function resetEditForm(item) {
   editForm.total_pieces = item?.total_pieces ?? null;
   editForm.germination_percentage = item?.germination_percentage ?? null;
   editForm.is_multiple_harvest = Boolean(item?.is_multiple_harvest);
+  editForm.harvest_cycles = Array.isArray(item?.harvest_cycles) && item.harvest_cycles.length
+    ? item.harvest_cycles.map((cycle, index) => ({
+      label: cycle?.label || `K${index + 1}`,
+      date: cycle?.date ? String(cycle.date).slice(0, 10) : "",
+      quantity: cycle?.quantity ?? null,
+    }))
+    : [{ label: "K1", date: "", quantity: null }];
   editForm.land_area = item?.land_area ?? null;
   editForm.altitude_mdpl = item?.altitude_mdpl ?? null;
   editForm.strengths = item?.strengths || "";
   editForm.weaknesses = item?.weaknesses || "";
   editForm.notes = item?.notes || "";
+  editErrors.value = {};
   editPhotoFile.value = null;
+}
+
+watch(
+  () => editForm.is_multiple_harvest,
+  (isMultiple) => {
+    if (isMultiple) {
+      if (editForm.harvest_cycles.length === 0) {
+        editForm.harvest_cycles.push({ label: "K1", date: "", quantity: null });
+      }
+      editForm.harvest_quantity = Number(editTotalHarvestQuantity.value || 0);
+    }
+  }
+);
+
+watch(
+  () => editForm.farmer_source,
+  (source) => {
+    if (source === "manual") {
+      editForm.demo_plot_id = null;
+    }
+  }
+);
+
+watch(editSelectedDemoPlot, (plot) => {
+  if (!plot || editForm.farmer_source !== "demo_plot") {
+    return;
+  }
+
+  editForm.farmer_name = plot.owner_name || "";
+  editForm.product_id = plot.product_id || null;
+  editForm.total_pieces = Number(plot.population || 0) || null;
+
+  const referenceDate = editForm.harvest_date || dayjs().format("YYYY-MM-DD");
+  if (plot.plant_date) {
+    const ageDays = dayjs(referenceDate).diff(dayjs(plot.plant_date), "day");
+    editForm.harvest_age_days = ageDays > 0 ? ageDays : null;
+  }
+});
+
+watch(
+  () => editForm.harvest_date,
+  (date) => {
+    if (!date || !editSelectedDemoPlot.value?.plant_date || editForm.farmer_source !== "demo_plot") {
+      return;
+    }
+    const ageDays = dayjs(date).diff(dayjs(editSelectedDemoPlot.value.plant_date), "day");
+    editForm.harvest_age_days = ageDays > 0 ? ageDays : null;
+  }
+);
+
+watch(editTotalHarvestQuantity, (value) => {
+  if (editForm.is_multiple_harvest) {
+    editForm.harvest_quantity = Number(value || 0);
+  }
+});
+
+function addEditCycle() {
+  const nextIndex = editForm.harvest_cycles.length + 1;
+  editForm.harvest_cycles.push({
+    label: `K${nextIndex}`,
+    date: "",
+    quantity: null,
+  });
+}
+
+function removeEditCycle(index) {
+  if (editForm.harvest_cycles.length === 1) {
+    return;
+  }
+  editForm.harvest_cycles.splice(index, 1);
 }
 
 async function saveHarvestEdit() {
@@ -438,23 +562,33 @@ async function saveHarvestEdit() {
   }
 
   savingEdit.value = true;
+  editErrors.value = {};
   try {
     const formData = new FormData();
     formData.append("product_id", String(editForm.product_id || selectedHarvest.value.product_id || ""));
     formData.append("harvest_date", editForm.harvest_date || "");
-    formData.append("harvest_quantity", String(editForm.harvest_quantity ?? 0));
+    formData.append("harvest_quantity", String(editTotalHarvestQuantity.value || 0));
     formData.append("total_pieces", String(editForm.total_pieces ?? ""));
     formData.append("germination_percentage", String(editForm.germination_percentage ?? ""));
     formData.append("is_multiple_harvest", editForm.is_multiple_harvest ? "1" : "0");
 
-    if (editForm.demo_plot_id) formData.append("demo_plot_id", String(editForm.demo_plot_id));
-    if (editForm.farmer_name) formData.append("farmer_name", editForm.farmer_name);
-    if (editForm.harvest_age_days !== null && editForm.harvest_age_days !== "") formData.append("harvest_age_days", String(editForm.harvest_age_days));
-    if (editForm.land_area !== null && editForm.land_area !== "") formData.append("land_area", String(editForm.land_area));
-    if (editForm.altitude_mdpl !== null && editForm.altitude_mdpl !== "") formData.append("altitude_mdpl", String(editForm.altitude_mdpl));
-    if (editForm.strengths) formData.append("strengths", editForm.strengths);
-    if (editForm.weaknesses) formData.append("weaknesses", editForm.weaknesses);
-    if (editForm.notes) formData.append("notes", editForm.notes);
+    formData.append("demo_plot_id", editForm.demo_plot_id ? String(editForm.demo_plot_id) : "");
+    formData.append("farmer_name", editForm.farmer_name || "");
+    formData.append("harvest_age_days", editForm.harvest_age_days ?? "");
+    formData.append("land_area", editForm.land_area ?? "");
+    formData.append("altitude_mdpl", editForm.altitude_mdpl ?? "");
+    formData.append("strengths", editForm.strengths || "");
+    formData.append("weaknesses", editForm.weaknesses || "");
+    formData.append("notes", editForm.notes || "");
+
+    if (editForm.is_multiple_harvest) {
+      editForm.harvest_cycles.forEach((cycle, index) => {
+        formData.append(`harvest_cycles[${index}][label]`, cycle.label || `K${index + 1}`);
+        formData.append(`harvest_cycles[${index}][date]`, cycle.date || "");
+        formData.append(`harvest_cycles[${index}][quantity]`, cycle.quantity ?? "");
+      });
+    }
+
     if (editPhotoFile.value) formData.append("photo", editPhotoFile.value);
 
     await axios.post(route("admin.harvest-result.update", selectedHarvest.value.id), formData, {
@@ -470,6 +604,9 @@ async function saveHarvestEdit() {
     editMode.value = false;
     $q.notify({ type: "positive", message: "Data hasil panen berhasil diperbarui.", position: "top" });
   } catch (error) {
+    if (error?.response?.status === 422 && error?.response?.data?.errors) {
+      editErrors.value = error.response.data.errors;
+    }
     const message = error?.response?.data?.message || "Gagal memperbarui data hasil panen.";
     $q.notify({ type: "negative", message, position: "top" });
   } finally {
@@ -995,6 +1132,33 @@ const isBs = page.props.auth?.user?.role === "bs";
                 <div class="text-subtitle2 text-weight-medium">Edit Data Hasil Panen</div>
                 <div class="text-caption text-grey-7 q-mt-xs">BS penginput, agronomis, dan admin dapat mengubah data termasuk menambah/mengganti foto.</div>
                 <div class="row q-col-gutter-sm q-mt-sm">
+                  <div class="col-12 col-md-6 col-lg-4">
+                    <q-option-group
+                      v-model="editForm.farmer_source"
+                      :options="farmerSourceOptions"
+                      type="radio"
+                      inline
+                      dense
+                      label="Sumber Data Petani"
+                    />
+                  </div>
+
+                  <div class="col-12 col-md-6 col-lg-8" v-if="editForm.farmer_source === 'demo_plot'">
+                    <q-select
+                      v-model="editForm.demo_plot_id"
+                      :options="editDemoPlotOptions"
+                      option-value="value"
+                      option-label="label"
+                      emit-value
+                      map-options
+                      dense
+                      outlined
+                      label="Pilih Demo Plot Petani"
+                      :error="Boolean(editErrors.demo_plot_id)"
+                      :error-message="firstError(editErrors.demo_plot_id)"
+                    />
+                  </div>
+
                   <div class="col-12 col-md-4">
                     <q-select
                       v-model="editForm.product_id"
@@ -1006,40 +1170,218 @@ const isBs = page.props.auth?.user?.role === "bs";
                       dense
                       outlined
                       label="Varietas"
+                      :disable="editForm.farmer_source === 'demo_plot' && Boolean(editForm.demo_plot_id)"
+                      :error="Boolean(editErrors.product_id)"
+                      :error-message="firstError(editErrors.product_id)"
                     />
                   </div>
                   <div class="col-12 col-md-4">
-                    <q-input v-model="editForm.farmer_name" dense outlined label="Nama Petani" />
+                    <q-input
+                      v-model="editForm.farmer_name"
+                      dense
+                      outlined
+                      label="Nama Petani"
+                      :disable="editForm.farmer_source === 'demo_plot'"
+                      :error="Boolean(editErrors.farmer_name)"
+                      :error-message="firstError(editErrors.farmer_name)"
+                    />
                   </div>
                   <div class="col-12 col-md-4">
-                    <q-input v-model="editForm.harvest_date" type="date" dense outlined label="Tanggal Panen" />
+                    <q-input
+                      v-model="editForm.harvest_date"
+                      type="date"
+                      dense
+                      outlined
+                      label="Tanggal Panen"
+                      :error="Boolean(editErrors.harvest_date)"
+                      :error-message="firstError(editErrors.harvest_date)"
+                    />
+                  </div>
+
+                  <div class="col-12 col-md-3">
+                    <q-input
+                      v-model.number="editForm.harvest_age_days"
+                      type="number"
+                      min="1"
+                      dense
+                      outlined
+                      label="Umur Panen (hari)"
+                      :error="Boolean(editErrors.harvest_age_days)"
+                      :error-message="firstError(editErrors.harvest_age_days)"
+                    />
                   </div>
                   <div class="col-12 col-md-3">
-                    <q-input v-model.number="editForm.harvest_quantity" type="number" min="0" step="0.01" dense outlined label="Total Panen (kg)" />
+                    <q-input
+                      v-model.number="editForm.land_area"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      dense
+                      outlined
+                      label="Luas Lahan (m²)"
+                      :error="Boolean(editErrors.land_area)"
+                      :error-message="firstError(editErrors.land_area)"
+                    />
                   </div>
                   <div class="col-12 col-md-3">
-                    <q-input v-model.number="editForm.total_pieces" type="number" min="0" step="1" dense outlined label="Qty Panen (PCS)" />
+                    <q-input
+                      v-model.number="editForm.altitude_mdpl"
+                      type="number"
+                      min="0"
+                      dense
+                      outlined
+                      label="Ketinggian (mdpl)"
+                      :error="Boolean(editErrors.altitude_mdpl)"
+                      :error-message="firstError(editErrors.altitude_mdpl)"
+                    />
                   </div>
                   <div class="col-12 col-md-3">
-                    <q-input v-model.number="editForm.germination_percentage" type="number" min="0" max="100" step="0.01" dense outlined label="DB / Germinasi (%)" />
+                    <q-toggle
+                      v-model="editForm.is_multiple_harvest"
+                      color="primary"
+                      label="Beberapa Kali Panen"
+                    />
+                  </div>
+
+                  <div class="col-12 col-md-3">
+                    <q-input
+                      v-model.number="editForm.harvest_quantity"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      dense
+                      outlined
+                      :disable="editForm.is_multiple_harvest"
+                      :hint="editForm.is_multiple_harvest ? 'Otomatis dari total K1/K2/dst (kg)' : ''"
+                      label="Jumlah Panen (kg)"
+                      :error="Boolean(editErrors.harvest_quantity)"
+                      :error-message="firstError(editErrors.harvest_quantity)"
+                    />
                   </div>
                   <div class="col-12 col-md-3">
-                    <q-input v-model.number="editForm.harvest_age_days" type="number" min="1" dense outlined label="Umur Panen (hari)" />
+                    <q-input
+                      v-model.number="editForm.total_pieces"
+                      type="number"
+                      min="0"
+                      step="1"
+                      dense
+                      outlined
+                      label="Qty Panen (PCS)"
+                      :error="Boolean(editErrors.total_pieces)"
+                      :error-message="firstError(editErrors.total_pieces)"
+                    />
                   </div>
                   <div class="col-12 col-md-3">
-                    <q-input v-model.number="editForm.land_area" type="number" min="0" step="0.01" dense outlined label="Luas Lahan (m²)" />
+                    <q-input
+                      v-model.number="editForm.germination_percentage"
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      dense
+                      outlined
+                      label="DB / Germinasi (%)"
+                      :error="Boolean(editErrors.germination_percentage)"
+                      :error-message="firstError(editErrors.germination_percentage)"
+                    />
                   </div>
                   <div class="col-12 col-md-3">
-                    <q-input v-model.number="editForm.altitude_mdpl" type="number" min="0" dense outlined label="Ketinggian (mdpl)" />
+                    <q-input
+                      :model-value="editSelectedDemoPlot?.population ? `${formatNumber(editSelectedDemoPlot.population, 0)} pohon` : '-'"
+                      dense
+                      outlined
+                      disable
+                      label="Populasi Demo Plot"
+                    />
+                  </div>
+
+                  <div class="col-12" v-if="editForm.is_multiple_harvest">
+                    <q-banner rounded class="bg-blue-1 text-blue-9 q-mb-sm">
+                      Isi panen bertahap per siklus, misalnya K1, K2, K3.
+                    </q-banner>
+                    <div v-if="editErrors.harvest_cycles" class="text-negative text-caption q-mb-sm">
+                      {{ firstError(editErrors.harvest_cycles) }}
+                    </div>
+
+                    <div class="column q-gutter-sm">
+                      <q-card
+                        v-for="(cycle, index) in editForm.harvest_cycles"
+                        :key="`edit-cycle-${index}`"
+                        flat
+                        bordered
+                      >
+                        <q-card-section class="q-pa-sm">
+                          <div class="row q-col-gutter-sm items-end">
+                            <div class="col-12 col-md-3">
+                              <q-input v-model="cycle.label" dense outlined :label="`Label ${index + 1}`" />
+                            </div>
+                            <div class="col-12 col-md-4">
+                              <q-input v-model="cycle.date" type="date" dense outlined label="Tanggal Panen" />
+                            </div>
+                            <div class="col-12 col-md-4">
+                              <q-input
+                                v-model.number="cycle.quantity"
+                                type="number"
+                                dense
+                                outlined
+                                label="Jumlah (kg)"
+                                min="0"
+                                step="0.01"
+                              />
+                            </div>
+                            <div class="col-12 col-md-1 flex justify-end">
+                              <q-btn
+                                flat
+                                round
+                                color="negative"
+                                icon="delete"
+                                @click="removeEditCycle(index)"
+                                :disable="editForm.harvest_cycles.length === 1"
+                              />
+                            </div>
+                          </div>
+                        </q-card-section>
+                      </q-card>
+                    </div>
+
+                    <q-btn class="q-mt-sm" flat color="primary" icon="add" label="Tambah K" @click="addEditCycle" />
+                  </div>
+
+                  <div class="col-12 col-md-6">
+                    <q-input
+                      v-model="editForm.strengths"
+                      type="textarea"
+                      autogrow
+                      dense
+                      outlined
+                      label="Kelebihan / Keunggulan Panen"
+                      :error="Boolean(editErrors.strengths)"
+                      :error-message="firstError(editErrors.strengths)"
+                    />
                   </div>
                   <div class="col-12 col-md-6">
-                    <q-input v-model="editForm.strengths" type="textarea" autogrow dense outlined label="Kekuatan" />
-                  </div>
-                  <div class="col-12 col-md-6">
-                    <q-input v-model="editForm.weaknesses" type="textarea" autogrow dense outlined label="Kelemahan" />
+                    <q-input
+                      v-model="editForm.weaknesses"
+                      type="textarea"
+                      autogrow
+                      dense
+                      outlined
+                      label="Kelemahan / Masalah Panen"
+                      :error="Boolean(editErrors.weaknesses)"
+                      :error-message="firstError(editErrors.weaknesses)"
+                    />
                   </div>
                   <div class="col-12">
-                    <q-input v-model="editForm.notes" type="textarea" autogrow dense outlined label="Catatan" />
+                    <q-input
+                      v-model="editForm.notes"
+                      type="textarea"
+                      autogrow
+                      dense
+                      outlined
+                      label="Catatan Umum"
+                      :error="Boolean(editErrors.notes)"
+                      :error-message="firstError(editErrors.notes)"
+                    />
                   </div>
                   <div class="col-12 col-md-6">
                     <q-file
@@ -1049,6 +1391,8 @@ const isBs = page.props.auth?.user?.role === "bs";
                       accept="image/*"
                       label="Tambah / ganti foto panen"
                       clearable
+                      :error="Boolean(editErrors.photo)"
+                      :error-message="firstError(editErrors.photo)"
                     />
                   </div>
                 </div>

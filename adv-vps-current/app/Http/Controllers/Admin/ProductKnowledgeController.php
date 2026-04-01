@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\DemoPlot;
 use App\Models\ProductHarvestResult;
 use App\Models\Product;
 use App\Models\ProductCategory;
@@ -15,9 +16,40 @@ class ProductKnowledgeController extends Controller
 {
     public function index()
     {
+        $user = request()->user();
+
+        $demoPlotsQuery = DemoPlot::query()
+            ->with(['product:id,name'])
+            ->where('active', true)
+            ->orderByDesc('updated_datetime')
+            ->orderByDesc('id');
+
+        if ($user && $user->role === User::Role_BS) {
+            $demoPlotsQuery->where('user_id', $user->id);
+        }
+
+        $demoPlots = $demoPlotsQuery->get([
+            'id',
+            'user_id',
+            'product_id',
+            'owner_name',
+            'population',
+            'plant_date',
+        ])->map(function ($item) {
+            return [
+                'id' => $item->id,
+                'product_id' => $item->product_id,
+                'product_name' => $item->product?->name,
+                'owner_name' => $item->owner_name,
+                'population' => $item->population,
+                'plant_date' => optional($item->plant_date)->format('Y-m-d'),
+            ];
+        })->values();
+
         return inertia('admin/product-knowledge/Index', [
             'categories' => ProductCategory::orderBy('name')->get(['id', 'name']),
             'products' => Product::where('active', true)->orderBy('name')->get(['id', 'name', 'jumlah_biji_per_pcs', 'price_1', 'uom_1', 'price_2', 'uom_2']),
+            'demoPlots' => $demoPlots,
         ]);
     }
 
