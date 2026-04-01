@@ -378,46 +378,47 @@ const isBs = page.props.auth?.user?.role === "bs";
             />
           </div>
 
-          <div v-if="activeTab === 'harvest'" class="col-auto">
-            <q-input
-              v-model="harvestFilter.search"
-              dense
-              outlined
-              placeholder="Cari petani, varietas, penginput..."
-              clearable
-              bg-color="white"
-              style="max-width:280px"
-            >
-              <template #prepend><q-icon name="search" size="18px" /></template>
-            </q-input>
-          </div>
-          <div v-if="activeTab === 'harvest'" class="col-auto">
-            <q-select
-              v-model="harvestFilter.product_id"
-              :options="productOptions"
-              option-value="value"
-              option-label="label"
-              emit-value
-              map-options
-              dense
-              outlined
-              bg-color="white"
-              style="min-width:160px; max-width:220px"
-            />
-          </div>
-          <div v-if="activeTab === 'harvest'" class="col-auto">
-            <q-select
-              v-model="harvestFilter.altitude_zone"
-              :options="altitudeZoneOptions"
-              option-value="value"
-              option-label="label"
-              emit-value
-              map-options
-              dense
-              outlined
-              bg-color="white"
-              style="min-width:210px; max-width:260px"
-            />
+          <div v-if="activeTab === 'harvest'" class="col-12">
+            <div class="row q-col-gutter-sm harvest-filter-grid">
+              <div class="col-12 col-md-5 col-lg-6">
+                <q-input
+                  v-model="harvestFilter.search"
+                  dense
+                  outlined
+                  placeholder="Cari petani, varietas, penginput..."
+                  clearable
+                  bg-color="white"
+                >
+                  <template #prepend><q-icon name="search" size="18px" /></template>
+                </q-input>
+              </div>
+              <div class="col-12 col-md-3 col-lg-3">
+                <q-select
+                  v-model="harvestFilter.product_id"
+                  :options="productOptions"
+                  option-value="value"
+                  option-label="label"
+                  emit-value
+                  map-options
+                  dense
+                  outlined
+                  bg-color="white"
+                />
+              </div>
+              <div class="col-12 col-md-4 col-lg-3">
+                <q-select
+                  v-model="harvestFilter.altitude_zone"
+                  :options="altitudeZoneOptions"
+                  option-value="value"
+                  option-label="label"
+                  emit-value
+                  map-options
+                  dense
+                  outlined
+                  bg-color="white"
+                />
+              </div>
+            </div>
           </div>
         </div>
       </q-toolbar>
@@ -480,7 +481,7 @@ const isBs = page.props.auth?.user?.role === "bs";
       </div>
     </div>
 
-    <div v-else class="q-pa-sm">
+    <div v-else class="harvest-page-wrap q-pa-sm q-pa-md-md">
       <div v-if="harvestLoading" class="row q-col-gutter-sm">
         <div v-for="n in 6" :key="n" class="col-12 col-md-6 col-lg-4">
           <q-skeleton height="160px" />
@@ -501,6 +502,9 @@ const isBs = page.props.auth?.user?.role === "bs";
                 <div class="text-caption text-grey-7 q-mt-xs">
                   Tampilan kartu dengan thumbnail dan data utama seperti galeri Product Knowledge.
                 </div>
+              </div>
+              <div class="col-12 col-md-auto text-caption text-grey-7">
+                Total data: <b>{{ harvestItems.length }}</b>
               </div>
             </div>
 
@@ -845,30 +849,38 @@ const isBs = page.props.auth?.user?.role === "bs";
   line-height: 1.3;
 }
 
+.harvest-page-wrap {
+  width: 100%;
+  max-width: none;
+}
+
+.harvest-filter-grid {
+  width: 100%;
+}
+
 .harvest-feed-shell {
+  width: 100% !important;
+  max-width: none !important;
   background: linear-gradient(180deg, #f9fcff 0%, #ffffff 100%);
   border-color: #dbe8f3;
 }
 
 .harvest-gallery-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  width: 100%;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 12px;
 }
 
-@media (min-width: 900px) {
-  .harvest-gallery-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 1300px) {
+@media (min-width: 1400px) {
   .harvest-gallery-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
 .harvest-entry-card {
+  width: 100% !important;
+  max-width: none !important;
   border-radius: 12px;
   overflow: hidden;
   border-color: #dce7ef;
@@ -971,8 +983,16 @@ const isBs = page.props.auth?.user?.role === "bs";
 }
 
 .analysis-card {
+  width: 100% !important;
+  max-width: none !important;
   background: #f8fbff;
   border-color: #dce8f3;
+}
+
+@media (max-width: 640px) {
+  .harvest-gallery-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .analysis-metric {
