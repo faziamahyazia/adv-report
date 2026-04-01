@@ -1137,15 +1137,18 @@ const isBs = page.props.auth?.user?.role === "bs";
                 <q-card flat bordered>
                   <q-card-section>
                     <div class="text-subtitle2 text-weight-medium">Rincian Panen Bertahap</div>
-                    <div class="column q-gutter-xs q-mt-sm">
+                    <div class="text-caption text-grey-7 q-mt-xs">
+                      Ringkasan K1/K2/dst ditata grid agar tidak menghabiskan ruang vertikal.
+                    </div>
+                    <div class="cycle-grid-compact q-mt-sm">
                       <div
                         v-for="(cycle, idx) in selectedHarvest.harvest_cycles"
                         :key="`dlg-cycle-${idx}`"
-                        class="text-body2 bg-grey-1 q-px-sm q-py-xs rounded-borders"
+                        class="cycle-grid-item"
                       >
-                        <b>{{ cycle.label || `K${idx + 1}` }}</b>
-                        - {{ formatNumber(cycle.quantity, 2) }} {{ selectedHarvest.harvest_unit || 'kg' }}
-                        <span v-if="cycle.date"> | {{ formatDate(cycle.date) }}</span>
+                        <div class="cycle-label">{{ cycle.label || `K${idx + 1}` }}</div>
+                        <div class="cycle-value">{{ formatNumber(cycle.quantity, 2) }} {{ selectedHarvest.harvest_unit || 'kg' }}</div>
+                        <div class="cycle-date" v-if="cycle.date">{{ formatDate(cycle.date) }}</div>
                       </div>
                     </div>
                   </q-card-section>
@@ -1541,6 +1544,38 @@ const isBs = page.props.auth?.user?.role === "bs";
   word-break: break-word;
 }
 
+.cycle-grid-compact {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.cycle-grid-item {
+  border: 1px solid #e5edf4;
+  border-radius: 8px;
+  padding: 8px;
+  background: #f8fbff;
+}
+
+.cycle-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #29527c;
+}
+
+.cycle-value {
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #1f3f60;
+}
+
+.cycle-date {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #70849a;
+}
+
 @media (max-width: 640px) {
   .harvest-gallery-grid {
     grid-template-columns: 1fr;
@@ -1568,6 +1603,10 @@ const isBs = page.props.auth?.user?.role === "bs";
   .detail-key {
     margin-top: 6px;
     font-weight: 700;
+  }
+
+  .cycle-grid-compact {
+    grid-template-columns: 1fr;
   }
 }
 
