@@ -84,6 +84,14 @@ function formatDateTime(value) {
   }).format(new Date(value));
 }
 
+function formatNumber(value, digits = 2) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return "0";
+  }
+  return number.toFixed(digits);
+}
+
 onMounted(async () => {
   await Promise.all([fetchProducts(), fetchHarvests()]);
 });
@@ -292,14 +300,33 @@ const isBs = page.props.auth?.user?.role === "bs";
                 </div>
               </div>
 
+              <div
+                v-if="item.is_multiple_harvest && item.harvest_cycles && item.harvest_cycles.length"
+                class="q-mt-sm"
+              >
+                <div class="text-caption text-grey-7 q-mb-xs"><b>Rincian Panen Bertahap</b></div>
+                <div class="column q-gutter-xs">
+                  <div
+                    v-for="(cycle, idx) in item.harvest_cycles"
+                    :key="`${item.id}-${idx}`"
+                    class="text-caption bg-grey-1 q-px-sm q-py-xs rounded-borders"
+                  >
+                    <b>{{ cycle.label || `K${idx + 1}` }}</b>
+                    - {{ formatNumber(cycle.quantity, 2) }} {{ item.harvest_unit }}
+                    <span v-if="cycle.pieces"> | {{ formatNumber(cycle.pieces, 0) }} buah</span>
+                    <span v-if="cycle.date"> | {{ formatDate(cycle.date) }}</span>
+                  </div>
+                </div>
+              </div>
+
               <!-- Summary Calculation -->
               <q-separator class="q-my-sm" />
               <div class="text-body2 bg-blue-50 q-pa-xs rounded">
                 <div v-if="item.land_area && item.harvest_quantity" class="text-info">
-                  <b>Produktivitas:</b> {{ (item.harvest_quantity / item.land_area).toFixed(2) }} {{ item.harvest_unit }}/m²
+                  <b>Produktivitas:</b> {{ formatNumber(item.harvest_quantity / item.land_area, 2) }} {{ item.harvest_unit }}/m²
                 </div>
                 <div v-if="item.total_pieces && item.harvest_quantity" class="text-info">
-                  <b>Per Buah:</b> {{ (item.harvest_quantity / item.total_pieces).toFixed(4) }} {{ item.harvest_unit }}
+                  <b>Per Buah:</b> {{ formatNumber(item.harvest_quantity / item.total_pieces, 4) }} {{ item.harvest_unit }}
                 </div>
                 <div v-if="item.per_piece_quantity" class="text-info">
                   <b>Per Satuan:</b> {{ item.per_piece_quantity }} {{ item.harvest_unit }}

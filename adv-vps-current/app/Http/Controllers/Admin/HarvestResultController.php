@@ -7,6 +7,7 @@ use App\Models\Product;
 use App\Models\ProductHarvestResult;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Intervention\Image\ImageManager;
 
 class HarvestResultController extends Controller
@@ -32,6 +33,11 @@ class HarvestResultController extends Controller
             'harvest_unit' => 'required|string|in:kg,pcs',
             'per_piece_quantity' => 'nullable|numeric|min:0',
             'is_multiple_harvest' => 'nullable|boolean',
+            'harvest_cycles' => 'nullable|array',
+            'harvest_cycles.*.label' => 'nullable|string|max:10',
+            'harvest_cycles.*.date' => 'nullable|date',
+            'harvest_cycles.*.quantity' => 'nullable|numeric|min:0',
+            'harvest_cycles.*.pieces' => 'nullable|numeric|min:0',
             'total_pieces' => 'nullable|numeric|min:0',
             'farmer_name' => 'nullable|string|max:255',
             'land_area' => 'nullable|numeric|min:0',
@@ -41,6 +47,44 @@ class HarvestResultController extends Controller
             'notes' => 'nullable|string',
             'photo' => 'nullable|image|max:10240',
         ]);
+
+        $isMultipleHarvest = (bool) ($validated['is_multiple_harvest'] ?? false);
+        $cycles = collect($validated['harvest_cycles'] ?? [])
+            ->map(function ($cycle, $index) {
+                $quantity = isset($cycle['quantity']) ? (float) $cycle['quantity'] : null;
+                $pieces = isset($cycle['pieces']) ? (float) $cycle['pieces'] : null;
+
+                return [
+                    'label' => trim((string) ($cycle['label'] ?? ('K' . ($index + 1)))) ?: ('K' . ($index + 1)),
+                    'date' => $cycle['date'] ?? null,
+                    'quantity' => $quantity,
+                    'pieces' => $pieces,
+                ];
+            })
+            ->filter(fn ($cycle) => $cycle['quantity'] !== null && $cycle['quantity'] > 0)
+            ->values();
+
+        if ($isMultipleHarvest && $cycles->isEmpty()) {
+            throw ValidationException::withMessages([
+                'harvest_cycles' => 'Isi minimal satu data panen bertahap (K1/K2/dst).',
+            ]);
+        }
+
+        $harvestQuantity = (float) $validated['harvest_quantity'];
+        $totalPieces = isset($validated['total_pieces']) ? (float) $validated['total_pieces'] : null;
+
+        if ($isMultipleHarvest && $cycles->isNotEmpty()) {
+            $harvestQuantity = (float) $cycles->sum('quantity');
+            $sumPieces = (float) $cycles->sum(fn ($cycle) => (float) ($cycle['pieces'] ?? 0));
+            if ($sumPieces > 0) {
+                $totalPieces = $sumPieces;
+            }
+        }
+
+        $perPieceQuantity = isset($validated['per_piece_quantity']) ? (float) $validated['per_piece_quantity'] : null;
+        if ($perPieceQuantity === null && $totalPieces && $totalPieces > 0 && $harvestQuantity > 0) {
+            $perPieceQuantity = $harvestQuantity / $totalPieces;
+        }
 
         $photoPath = null;
         if ($request->hasFile('photo')) {
@@ -57,11 +101,12 @@ class HarvestResultController extends Controller
             'product_id' => $validated['product_id'],
             'harvest_date' => $validated['harvest_date'],
             'harvest_age_days' => $validated['harvest_age_days'] ?? null,
-            'harvest_quantity' => $validated['harvest_quantity'],
+            'harvest_quantity' => $harvestQuantity,
             'harvest_unit' => $validated['harvest_unit'],
-            'per_piece_quantity' => $validated['per_piece_quantity'] ?? null,
-            'is_multiple_harvest' => $validated['is_multiple_harvest'] ?? false,
-            'total_pieces' => $validated['total_pieces'] ?? null,
+            'per_piece_quantity' => $perPieceQuantity,
+            'is_multiple_harvest' => $isMultipleHarvest,
+            'harvest_cycles' => $isMultipleHarvest ? $cycles->all() : null,
+            'total_pieces' => $totalPieces,
             'farmer_name' => $validated['farmer_name'] ?? null,
             'land_area' => $validated['land_area'] ?? null,
             'location' => $validated['location'] ?? null,
@@ -69,6 +114,8 @@ class HarvestResultController extends Controller
             'weaknesses' => $validated['weaknesses'] ?? null,
             'notes' => $validated['notes'] ?? null,
             'photo_path' => $photoPath,
+            'created_datetime' => now(),
+            'created_by_uid' => $request->user()->id,
         ]);
 
         return response()->json(['message' => 'Data hasil panen berhasil disimpan.']);

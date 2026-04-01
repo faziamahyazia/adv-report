@@ -16,6 +16,7 @@ class ProductHarvestResult extends Model
         'harvest_unit',
         'per_piece_quantity',
         'is_multiple_harvest',
+        'harvest_cycles',
         'farmer_name',
         'land_area',
         'total_pieces',
@@ -24,6 +25,10 @@ class ProductHarvestResult extends Model
         'weaknesses',
         'notes',
         'photo_path',
+        'created_datetime',
+        'created_by_uid',
+        'updated_datetime',
+        'updated_by_uid',
     ];
 
     protected $casts = [
@@ -33,6 +38,7 @@ class ProductHarvestResult extends Model
         'harvest_quantity' => 'float',
         'per_piece_quantity' => 'float',
         'is_multiple_harvest' => 'boolean',
+        'harvest_cycles' => 'array',
         'land_area' => 'float',
         'total_pieces' => 'float',
         'created_by_uid' => 'integer',
