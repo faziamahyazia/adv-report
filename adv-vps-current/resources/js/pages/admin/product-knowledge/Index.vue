@@ -188,6 +188,114 @@ const harvestAnalysis = computed(() => {
   };
 });
 
+function downloadCsv(filename, rows) {
+  const csvContent = rows
+    .map((row) =>
+      row
+        .map((cell) => {
+          const text = String(cell ?? "").replace(/"/g, '""');
+          return `"${text}"`;
+        })
+        .join(",")
+    )
+    .join("\n");
+
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function exportHarvestAnalysisCsv() {
+  const rows = [];
+  const now = new Date().toISOString();
+  const analysis = harvestAnalysis.value;
+
+  rows.push(["Laporan", "Summary Analisis Hasil Panen"]);
+  rows.push(["Waktu Export", now]);
+  rows.push([]);
+
+  rows.push(["Ringkasan Umum"]);
+  rows.push(["Total Data", analysis.totalRecords]);
+  rows.push(["Total Hasil Panen (kg)", formatNumber(analysis.totalHarvest, 2)]);
+  rows.push([
+    "Zona Dominan",
+    analysis.dominantZone ? `${analysis.dominantZone.label} (${formatNumber(analysis.dominantZone.totalHarvest, 2)} kg)` : "-",
+  ]);
+  rows.push([]);
+
+  rows.push(["Analisis Per Zona"]);
+  rows.push(["Zona", "Range", "Jumlah Data", "Total Hasil (kg)", "Rata-rata per Data (kg)"]);
+  analysis.zoneCards.forEach((zone) => {
+    rows.push([
+      zone.label,
+      zone.range,
+      zone.count,
+      formatNumber(zone.totalHarvest, 2),
+      formatNumber(zone.avgHarvest, 2),
+    ]);
+  });
+  rows.push([]);
+
+  rows.push(["Top Kekuatan"]);
+  rows.push(["Frasa", "Frekuensi"]);
+  (analysis.strengthInsights.length ? analysis.strengthInsights : [{ label: "-", count: 0 }]).forEach((item) => {
+    rows.push([item.label, item.count]);
+  });
+  rows.push([]);
+
+  rows.push(["Top Kelemahan"]);
+  rows.push(["Frasa", "Frekuensi"]);
+  (analysis.weaknessInsights.length ? analysis.weaknessInsights : [{ label: "-", count: 0 }]).forEach((item) => {
+    rows.push([item.label, item.count]);
+  });
+
+  downloadCsv("summary-analisis-hasil-panen.csv", rows);
+  $q.notify({ type: "positive", message: "Summary analisis berhasil diexport.", position: "top" });
+}
+
+function exportHarvestDetailCsv() {
+  const rows = [[
+    "Tanggal Panen",
+    "Varietas",
+    "Petani",
+    "Ketinggian (mdpl)",
+    "Zona",
+    "Hasil Panen (kg)",
+    "Luas Lahan (m2)",
+    "Produktivitas (kg/m2)",
+    "Kekuatan",
+    "Kelemahan",
+    "Catatan",
+  ]];
+
+  harvestItems.value.forEach((item) => {
+    const productivity = item.land_area && item.harvest_quantity
+      ? Number(item.harvest_quantity) / Number(item.land_area)
+      : null;
+
+    rows.push([
+      formatDate(item.harvest_date),
+      item.product?.name || "-",
+      item.farmer_name || "-",
+      item.altitude_mdpl ?? "-",
+      altitudeZone(item.altitude_mdpl),
+      formatNumber(item.harvest_quantity, 2),
+      item.land_area ?? "-",
+      productivity !== null ? formatNumber(productivity, 2) : "-",
+      item.strengths || "-",
+      item.weaknesses || "-",
+      item.notes || "-",
+    ]);
+  });
+
+  downloadCsv("detail-hasil-panen.csv", rows);
+  $q.notify({ type: "positive", message: "Detail hasil panen berhasil diexport.", position: "top" });
+}
+
 onMounted(async () => {
   await Promise.all([fetchProducts(), fetchHarvests()]);
 });
@@ -380,7 +488,29 @@ const isBs = page.props.auth?.user?.role === "bs";
       <div v-else>
         <q-card flat bordered class="q-mb-md analysis-card">
           <q-card-section>
-            <div class="text-subtitle1 text-weight-medium">Summary Analisis Hasil Panen</div>
+            <div class="row items-center justify-between q-col-gutter-sm">
+              <div class="col-12 col-md-auto">
+                <div class="text-subtitle1 text-weight-medium">Summary Analisis Hasil Panen</div>
+              </div>
+              <div class="col-12 col-md-auto">
+                <div class="row q-gutter-sm justify-end">
+                  <q-btn
+                    outline
+                    color="primary"
+                    icon="download"
+                    label="Export Summary CSV"
+                    @click="exportHarvestAnalysisCsv"
+                  />
+                  <q-btn
+                    outline
+                    color="secondary"
+                    icon="table_view"
+                    label="Export Detail CSV"
+                    @click="exportHarvestDetailCsv"
+                  />
+                </div>
+              </div>
+            </div>
             <div class="text-caption text-grey-7 q-mt-xs">
               Klasifikasi zona: Lowland 0-400 mdpl, Middleland 401-700 mdpl, Highland &gt;700 mdpl.
             </div>
