@@ -55,7 +55,7 @@ const detailMobileTab = ref("summary");
 const editMode = ref(false);
 const savingEdit = ref(false);
 const deletingItem = ref(false);
-const editPhotoFile = ref(null);
+const editPhotoFiles = ref([]);
 const editErrors = ref({});
 
 const editForm = reactive({
@@ -242,6 +242,39 @@ function getPerTreeYield(item) {
 }
 
 function getPhotoUrl(item) {
+  const urls = getPhotoUrls(item);
+  if (urls.length > 0) {
+    return urls[0];
+  }
+  return null;
+}
+
+function getPhotoUrls(item) {
+  const fromArray = Array.isArray(item?.photo_urls) ? item.photo_urls : [];
+  const urls = fromArray
+    .map((url) => String(url || "").trim())
+    .filter(Boolean)
+    .map((url) => {
+      if (url.startsWith("http://") || url.startsWith("https://")) {
+        try {
+          const parsed = new URL(url);
+          return `${parsed.pathname}${parsed.search}`;
+        } catch (error) {
+          return url;
+        }
+      }
+      return url;
+    });
+
+  if (urls.length > 0) {
+    return Array.from(new Set(urls));
+  }
+
+  const single = getPhotoUrlLegacy(item);
+  return single ? [single] : [];
+}
+
+function getPhotoUrlLegacy(item) {
   const explicitUrl = String(item?.photo_url || "").trim();
   if (explicitUrl) {
     if (explicitUrl.startsWith("http://") || explicitUrl.startsWith("https://")) {
@@ -513,7 +546,7 @@ function resetEditForm(item) {
   editForm.weaknesses = item?.weaknesses || "";
   editForm.notes = item?.notes || "";
   editErrors.value = {};
-  editPhotoFile.value = null;
+  editPhotoFiles.value = [];
 }
 
 watch(
@@ -619,7 +652,11 @@ async function saveHarvestEdit() {
       });
     }
 
-    if (editPhotoFile.value) formData.append("photo", editPhotoFile.value);
+    if (Array.isArray(editPhotoFiles.value) && editPhotoFiles.value.length > 0) {
+      editPhotoFiles.value.forEach((file) => {
+        formData.append("photos[]", file);
+      });
+    }
 
     await axios.post(route("admin.harvest-result.update", selectedHarvest.value.id), formData, {
       headers: { "Content-Type": "multipart/form-data" },
@@ -1451,14 +1488,16 @@ const isBs = page.props.auth?.user?.role === "bs";
                   </div>
                   <div class="col-12 col-md-6">
                     <q-file
-                      v-model="editPhotoFile"
+                      v-model="editPhotoFiles"
                       dense
                       outlined
                       accept="image/*"
-                      label="Tambah / ganti foto panen"
+                      label="Tambah foto panen (bisa banyak)"
+                      multiple
+                      use-chips
                       clearable
-                      :error="Boolean(editErrors.photo)"
-                      :error-message="firstError(editErrors.photo)"
+                      :error="Boolean(editErrors.photos || editErrors.photo)"
+                      :error-message="firstError(editErrors.photos || editErrors.photo)"
                     />
                   </div>
                 </div>
@@ -1556,6 +1595,33 @@ const isBs = page.props.auth?.user?.role === "bs";
                   </q-img>
                 </q-card>
               </div>
+
+              <div
+                class="col-12"
+                v-if="getPhotoUrls(selectedHarvest).length > 1"
+                v-show="!$q.screen.lt.md || detailMobileTab === 'extra'"
+              >
+                <q-card flat bordered>
+                  <q-card-section>
+                    <div class="text-subtitle2 text-weight-medium">Galeri Foto Panen</div>
+                    <div class="detail-photo-grid q-mt-sm">
+                      <q-img
+                        v-for="(img, idx) in getPhotoUrls(selectedHarvest)"
+                        :key="`harvest-photo-${idx}`"
+                        :src="img"
+                        ratio="4/3"
+                        class="detail-gallery-thumb"
+                      >
+                        <template #error>
+                          <div class="detail-gallery-thumb flex flex-center bg-grey-2">
+                            <q-icon name="broken_image" size="20px" color="grey-6" />
+                          </div>
+                        </template>
+                      </q-img>
+                    </div>
+                  </q-card-section>
+                </q-card>
+              </div>
               <div class="col-12 col-md-6" v-show="!$q.screen.lt.md || detailMobileTab === 'main'">
                 <q-card flat bordered>
                   <q-card-section>
@@ -1597,7 +1663,10 @@ const isBs = page.props.auth?.user?.role === "bs";
                             </div>
                           </template>
                         </q-img>
-                        <span v-else>-</span>
+                        <div v-if="getPhotoUrls(selectedHarvest).length > 1" class="text-caption text-grey-7 q-mt-xs">
+                          +{{ getPhotoUrls(selectedHarvest).length - 1 }} foto tambahan
+                        </div>
+                        <span v-if="!getPhotoUrl(selectedHarvest)">-</span>
                       </div>
                       <div class="detail-key">Lokasi</div><div class="detail-val">{{ selectedHarvest.location || '-' }}</div>
                       <div class="detail-key">Populasi Demo Plot</div><div class="detail-val">{{ selectedHarvest.demo_plot?.population ? `${formatNumber(selectedHarvest.demo_plot.population, 0)} pohon` : '-' }}</div>
@@ -2053,6 +2122,18 @@ const isBs = page.props.auth?.user?.role === "bs";
 
 .detail-inline-thumb {
   width: 140px;
+  border-radius: 8px;
+  border: 1px solid #dce7ef;
+  overflow: hidden;
+}
+
+.detail-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.detail-gallery-thumb {
   border-radius: 8px;
   border: 1px solid #dce7ef;
   overflow: hidden;

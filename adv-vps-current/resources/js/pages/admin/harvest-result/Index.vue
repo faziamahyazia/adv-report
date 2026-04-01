@@ -278,18 +278,20 @@
                     :error-message="firstError(errors.weaknesses)"
                   />
                   <q-file
-                    v-model="form.photoFile"
+                    v-model="form.photoFiles"
                     outlined
                     dense
                     class="q-mt-sm"
                     label="Upload Foto Kelemahan / Masalah Panen"
                     accept="image/*"
+                    multiple
+                    use-chips
                     clearable
                     @update:model-value="handlePhotoChange"
-                    :error="Boolean(errors.photo)"
-                    :error-message="firstError(errors.photo)"
+                    :error="Boolean(errors.photos || errors.photo)"
+                    :error-message="firstError(errors.photos || errors.photo)"
                   />
-                  <div class="text-caption text-grey-7 q-mt-xs">Format JPG/PNG, maksimal 10MB.</div>
+                  <div class="text-caption text-grey-7 q-mt-xs">Format JPG/PNG, maksimal 10MB per foto, maksimal 10 foto.</div>
                 </div>
                 <div class="col-12">
                   <q-input
@@ -439,7 +441,7 @@ const form = reactive({
   strengths: "",
   weaknesses: "",
   notes: "",
-  photoFile: null,
+  photoFiles: [],
 });
 
 const demoPlotOptions = computed(() => {
@@ -613,8 +615,13 @@ function removeCycle(index) {
   form.harvest_cycles.splice(index, 1);
 }
 
-function handlePhotoChange(file) {
-  form.photoFile = file || null;
+function handlePhotoChange(files) {
+  if (Array.isArray(files)) {
+    form.photoFiles = files;
+    return;
+  }
+
+  form.photoFiles = files ? [files] : [];
 }
 
 function safeNumber(value, decimals) {
@@ -643,7 +650,7 @@ function resetForm() {
   form.strengths = "";
   form.weaknesses = "";
   form.notes = "";
-  form.photoFile = null;
+  form.photoFiles = [];
   errors.value = {};
 }
 
@@ -681,8 +688,10 @@ async function submitHarvest() {
       });
     }
 
-    if (form.photoFile) {
-      payload.append("photo", form.photoFile);
+    if (Array.isArray(form.photoFiles) && form.photoFiles.length > 0) {
+      form.photoFiles.forEach((file) => {
+        payload.append("photos[]", file);
+      });
     }
 
     const response = await axios.post(route("admin.harvest-result.store"), payload, {

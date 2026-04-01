@@ -179,6 +179,7 @@ class ProductKnowledgeController extends Controller
             'product:id,name,price_1,uom_1,price_2,uom_2',
             'createdBy:id,name',
             'demoPlot:id,owner_name,population,product_id',
+            'photos:id,product_harvest_result_id,image_path,sort_order',
         ])->orderByDesc('created_datetime')->orderByDesc('id');
 
         if (!empty($filter['search'])) {
@@ -221,15 +222,35 @@ class ProductKnowledgeController extends Controller
 
             $arr = $item->toArray();
             $rawPhotoPath = trim((string) ($arr['photo_path'] ?? ''));
+            $photoUrls = [];
+
+            foreach (($arr['photos'] ?? []) as $photo) {
+                $imgPath = trim((string) ($photo['image_path'] ?? ''));
+                if ($imgPath === '') {
+                    continue;
+                }
+                $normalized = str_replace('\\\\', '/', ltrim($imgPath, '/'));
+                if (str_starts_with($normalized, 'public/')) {
+                    $normalized = substr($normalized, 7);
+                }
+                $photoUrls[] = '/' . ltrim($normalized, '/');
+            }
+
             if ($rawPhotoPath !== '') {
                 $normalizedPhotoPath = str_replace('\\\\', '/', ltrim($rawPhotoPath, '/'));
                 if (str_starts_with($normalizedPhotoPath, 'public/')) {
                     $normalizedPhotoPath = substr($normalizedPhotoPath, 7);
                 }
-                $arr['photo_url'] = '/' . ltrim($normalizedPhotoPath, '/');
+                $legacyUrl = '/' . ltrim($normalizedPhotoPath, '/');
+                if (!in_array($legacyUrl, $photoUrls, true)) {
+                    array_unshift($photoUrls, $legacyUrl);
+                }
             } else {
-                $arr['photo_url'] = null;
+                $legacyUrl = null;
             }
+
+            $arr['photo_urls'] = array_values(array_unique($photoUrls));
+            $arr['photo_url'] = $arr['photo_urls'][0] ?? $legacyUrl;
             $arr['can_edit'] = $canManage;
             $arr['can_delete'] = $canManage;
 

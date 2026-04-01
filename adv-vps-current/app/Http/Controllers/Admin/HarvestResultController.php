@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\DemoPlot;
 use App\Models\Product;
 use App\Models\ProductHarvestResult;
+use App\Models\ProductHarvestResultPhoto;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -77,6 +78,8 @@ class HarvestResultController extends Controller
             'weaknesses' => 'nullable|string',
             'notes' => 'nullable|string',
             'photo' => 'nullable|image|max:10240',
+            'photos' => 'nullable|array|max:10',
+            'photos.*' => 'nullable|image|max:10240',
         ]);
 
         $isMultipleHarvest = (bool) ($validated['is_multiple_harvest'] ?? false);
@@ -125,18 +128,11 @@ class HarvestResultController extends Controller
 
         $perPieceQuantity = $totalPieces > 0 ? ($harvestQuantity / $totalPieces) : null;
 
-        $photoPath = null;
-        if ($request->hasFile('photo')) {
-            $manager = new ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
-            $filename = 'harvest_' . time() . '_' . uniqid() . '.jpg';
-            $photoPath = 'uploads/' . $filename;
+        $uploadedPhotos = $this->collectUploadedPhotos($request);
+        $photoPaths = $this->storeHarvestPhotos($uploadedPhotos);
+        $primaryPhotoPath = $photoPaths[0] ?? null;
 
-            $image = $manager->read($request->file('photo'));
-            $image->scaleDown(1600, 1600);
-            $image->toJpeg(82)->save(public_path($photoPath));
-        }
-
-        ProductHarvestResult::create([
+        $item = ProductHarvestResult::create([
             'demo_plot_id' => $demoPlot?->id,
             'product_id' => $demoPlot?->product_id ?? $validated['product_id'],
             'harvest_date' => $validated['harvest_date'],
@@ -155,10 +151,14 @@ class HarvestResultController extends Controller
             'strengths' => $validated['strengths'] ?? null,
             'weaknesses' => $validated['weaknesses'] ?? null,
             'notes' => $validated['notes'] ?? null,
-            'photo_path' => $photoPath,
+            'photo_path' => $primaryPhotoPath,
             'created_datetime' => now(),
             'created_by_uid' => $request->user()->id,
         ]);
+
+        if (!empty($photoPaths)) {
+            $this->attachPhotoRecords($item, $photoPaths);
+        }
 
         return response()->json(['message' => 'Data hasil panen berhasil disimpan.']);
     }
@@ -188,6 +188,8 @@ class HarvestResultController extends Controller
             'weaknesses' => 'nullable|string',
             'notes' => 'nullable|string',
             'photo' => 'nullable|image|max:10240',
+            'photos' => 'nullable|array|max:10',
+            'photos.*' => 'nullable|image|max:10240',
         ]);
 
         $isMultipleHarvest = (bool) ($validated['is_multiple_harvest'] ?? $item->is_multiple_harvest);
@@ -241,18 +243,19 @@ class HarvestResultController extends Controller
         $perPieceQuantity = $totalPieces > 0 ? ($harvestQuantity / $totalPieces) : null;
 
         $photoPath = $item->photo_path;
-        if ($request->hasFile('photo')) {
-            if ($photoPath && file_exists(public_path($photoPath))) {
-                @unlink(public_path($photoPath));
-            }
+        $uploadedPhotos = $this->collectUploadedPhotos($request);
+        $newPhotoPaths = $this->storeHarvestPhotos($uploadedPhotos);
 
-            $manager = new ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
-            $filename = 'harvest_' . time() . '_' . uniqid() . '.jpg';
-            $photoPath = 'uploads/' . $filename;
+        if (!empty($newPhotoPaths)) {
+            $this->attachPhotoRecords($item, $newPhotoPaths);
+        }
 
-            $image = $manager->read($request->file('photo'));
-            $image->scaleDown(1600, 1600);
-            $image->toJpeg(82)->save(public_path($photoPath));
+        if (!$photoPath) {
+            $photoPath = $newPhotoPaths[0] ?? null;
+        }
+
+        if (!$photoPath) {
+            $photoPath = optional($item->photos()->orderBy('sort_order')->first())->image_path;
         }
 
         $item->fill([
@@ -295,6 +298,12 @@ class HarvestResultController extends Controller
             @unlink(public_path($item->photo_path));
         }
 
+        foreach ($item->photos as $photo) {
+            if ($photo->image_path && file_exists(public_path($photo->image_path))) {
+                @unlink(public_path($photo->image_path));
+            }
+        }
+
         $item->delete();
 
         return response()->json(['message' => 'Data hasil panen berhasil dihapus.']);
@@ -311,5 +320,66 @@ class HarvestResultController extends Controller
         }
 
         abort(403, 'Anda tidak memiliki akses untuk mengubah data panen ini.');
+    }
+
+    private function collectUploadedPhotos(Request $request): array
+    {
+        $files = [];
+
+        if ($request->hasFile('photos')) {
+            foreach ((array) $request->file('photos') as $file) {
+                if ($file) {
+                    $files[] = $file;
+                }
+            }
+        }
+
+        if ($request->hasFile('photo')) {
+            $files[] = $request->file('photo');
+        }
+
+        return $files;
+    }
+
+    private function storeHarvestPhotos(array $files): array
+    {
+        if (empty($files)) {
+            return [];
+        }
+
+        $manager = new ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
+        $paths = [];
+
+        foreach ($files as $index => $file) {
+            $filename = 'harvest_' . time() . '_' . $index . '_' . uniqid() . '.jpg';
+            $path = 'uploads/' . $filename;
+
+            $image = $manager->read($file);
+            $image->scaleDown(1600, 1600);
+            $image->toJpeg(82)->save(public_path($path));
+
+            $paths[] = $path;
+        }
+
+        return $paths;
+    }
+
+    private function attachPhotoRecords(ProductHarvestResult $item, array $paths): void
+    {
+        if (empty($paths)) {
+            return;
+        }
+
+        $startOrder = (int) ($item->photos()->max('sort_order') ?? -1) + 1;
+        $rows = [];
+        foreach ($paths as $offset => $path) {
+            $rows[] = [
+                'product_harvest_result_id' => $item->id,
+                'image_path' => $path,
+                'sort_order' => $startOrder + $offset,
+            ];
+        }
+
+        ProductHarvestResultPhoto::insert($rows);
     }
 }

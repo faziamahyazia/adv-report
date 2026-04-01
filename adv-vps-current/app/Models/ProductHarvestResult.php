@@ -65,4 +65,11 @@ class ProductHarvestResult extends Model
     {
         return $this->belongsTo(DemoPlot::class, 'demo_plot_id');
     }
+
+    public function photos()
+    {
+        return $this->hasMany(ProductHarvestResultPhoto::class, 'product_harvest_result_id')
+            ->orderBy('sort_order')
+            ->orderBy('id');
+    }
 }
