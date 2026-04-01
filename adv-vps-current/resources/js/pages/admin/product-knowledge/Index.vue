@@ -92,6 +92,20 @@ function formatNumber(value, digits = 2) {
   return number.toFixed(digits);
 }
 
+function altitudeZone(value) {
+  const altitude = Number(value);
+  if (!Number.isFinite(altitude) || altitude < 0) {
+    return "-";
+  }
+  if (altitude <= 400) {
+    return "Lowland";
+  }
+  if (altitude <= 700) {
+    return "Middleland";
+  }
+  return "Highland";
+}
+
 onMounted(async () => {
   await Promise.all([fetchProducts(), fetchHarvests()]);
 });
@@ -292,6 +306,9 @@ const isBs = page.props.auth?.user?.role === "bs";
                 <div><b>Tanggal Panen:</b> {{ formatDate(item.harvest_date) }}</div>
                 <div v-if="item.harvest_age_days"><b>Umur Panen:</b> {{ item.harvest_age_days }} hari</div>
                 <div v-if="item.land_area"><b>Luas Lahan:</b> {{ item.land_area }} m²</div>
+                <div v-if="item.altitude_mdpl !== null && item.altitude_mdpl !== undefined">
+                  <b>Ketinggian:</b> {{ formatNumber(item.altitude_mdpl, 0) }} mdpl ({{ altitudeZone(item.altitude_mdpl) }})
+                </div>
                 <div v-if="item.demo_plot?.population"><b>Populasi Tanam:</b> {{ formatNumber(item.demo_plot.population, 0) }} pohon</div>
                 <div v-if="item.is_multiple_harvest" class="text-primary">
                   <q-icon name="cached" size="16px" /> Beberapa kali panen

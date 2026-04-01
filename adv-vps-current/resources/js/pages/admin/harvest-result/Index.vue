@@ -120,6 +120,19 @@
                     :error-message="firstError(errors.land_area)"
                   />
                 </div>
+                <div class="col-12 col-md-6 col-xl-3">
+                  <q-input
+                    v-model.number="form.altitude_mdpl"
+                    type="number"
+                    outlined
+                    dense
+                    label="Ketinggian (mdpl)"
+                    min="0"
+                    :hint="altitudeHint"
+                    :error="Boolean(errors.altitude_mdpl)"
+                    :error-message="firstError(errors.altitude_mdpl)"
+                  />
+                </div>
                 <div class="col-12 col-md-6 col-xl-3 flex items-center">
                   <q-toggle
                     v-model="form.is_multiple_harvest"
@@ -294,6 +307,15 @@
                     <span v-else>-</span>
                   </q-item-section>
                 </q-item>
+                <q-item>
+                  <q-item-section>Ketinggian</q-item-section>
+                  <q-item-section side>
+                    <span v-if="form.altitude_mdpl !== null && form.altitude_mdpl !== ''">
+                      {{ safeNumber(form.altitude_mdpl, 0) }} mdpl ({{ altitudeZoneLabel }})
+                    </span>
+                    <span v-else>-</span>
+                  </q-item-section>
+                </q-item>
                 <q-item v-if="form.is_multiple_harvest">
                   <q-item-section>Siklus Aktif</q-item-section>
                   <q-item-section side>{{ form.harvest_cycles.length }} (K1/K2/dst)</q-item-section>
@@ -338,6 +360,7 @@ const form = reactive({
   product_id: null,
   farmer_name: "",
   land_area: null,
+  altitude_mdpl: null,
   harvest_date: "",
   harvest_age_days: null,
   harvest_quantity: null,
@@ -391,6 +414,28 @@ const estimatedProductivity = computed(() => {
     return totalHarvestQuantity.value / land;
   }
   return null;
+});
+
+const altitudeZoneLabel = computed(() => {
+  const altitude = Number(form.altitude_mdpl);
+  if (!Number.isFinite(altitude) || altitude < 0) {
+    return "-";
+  }
+  if (altitude <= 400) {
+    return "Lowland";
+  }
+  if (altitude <= 700) {
+    return "Middleland";
+  }
+  return "Highland";
+});
+
+const altitudeHint = computed(() => {
+  const altitude = Number(form.altitude_mdpl);
+  if (!Number.isFinite(altitude) || altitude < 0) {
+    return "Input angka saja, contoh: 200";
+  }
+  return `Kategori otomatis: ${altitudeZoneLabel.value}`;
 });
 
 watch(
@@ -477,6 +522,7 @@ function resetForm() {
   form.product_id = null;
   form.farmer_name = "";
   form.land_area = null;
+  form.altitude_mdpl = null;
   form.harvest_date = "";
   form.harvest_age_days = null;
   form.harvest_quantity = null;
@@ -506,6 +552,7 @@ async function submitHarvest() {
     payload.append("product_id", form.product_id ?? "");
     payload.append("farmer_name", form.farmer_name || "");
     payload.append("land_area", form.land_area ?? "");
+    payload.append("altitude_mdpl", form.altitude_mdpl ?? "");
     payload.append("harvest_date", form.harvest_date || "");
     payload.append("harvest_age_days", form.harvest_age_days ?? "");
     payload.append("harvest_quantity", totalHarvestQuantity.value || 0);
