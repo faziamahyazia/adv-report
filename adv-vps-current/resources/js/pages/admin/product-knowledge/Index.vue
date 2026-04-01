@@ -493,6 +493,90 @@ const isBs = page.props.auth?.user?.role === "bs";
       </div>
 
       <div v-else>
+        <q-card flat bordered class="q-mb-md harvest-feed-shell">
+          <q-card-section>
+            <div class="row items-center justify-between q-col-gutter-sm">
+              <div class="col-12 col-md-auto">
+                <div class="text-subtitle1 text-weight-medium">Data Input Hasil Panen BS</div>
+                <div class="text-caption text-grey-7 q-mt-xs">
+                  Tampilan kartu dengan thumbnail dan data utama seperti galeri Product Knowledge.
+                </div>
+              </div>
+            </div>
+
+            <div class="harvest-gallery-grid q-mt-md">
+              <q-card
+                v-for="item in harvestItems"
+                :key="`card-${item.id}`"
+                flat
+                bordered
+                class="harvest-entry-card"
+              >
+                <div class="harvest-thumb-wrap">
+                  <q-img
+                    v-if="item.photo_path"
+                    :src="'/' + item.photo_path"
+                    ratio="4/3"
+                    class="harvest-thumb"
+                  />
+                  <div v-else class="harvest-no-thumb flex flex-center bg-grey-2">
+                    <q-icon name="agriculture" size="30px" color="grey-6" />
+                  </div>
+
+                  <div class="harvest-tag-row">
+                    <span class="harvest-tag zone-tag">
+                      {{ item.altitude_mdpl !== null && item.altitude_mdpl !== undefined ? altitudeZone(item.altitude_mdpl) : 'Zona -' }}
+                    </span>
+                    <span v-if="item.is_multiple_harvest" class="harvest-tag cycle-tag">Multi Panen</span>
+                  </div>
+                </div>
+
+                <q-card-section class="q-pt-sm">
+                  <div class="harvest-title">{{ item.product?.name || '-' }}</div>
+                  <div class="harvest-subtitle">{{ item.farmer_name || '-' }}</div>
+
+                  <div class="harvest-stat-grid q-mt-sm">
+                    <div class="harvest-stat-item">
+                      <div class="harvest-stat-label">Tanggal</div>
+                      <div class="harvest-stat-value">{{ formatDate(item.harvest_date) }}</div>
+                    </div>
+                    <div class="harvest-stat-item text-right">
+                      <div class="harvest-stat-label">Total Panen</div>
+                      <div class="harvest-stat-value">{{ formatNumber(item.harvest_quantity, 2) }} {{ item.harvest_unit || 'kg' }}</div>
+                    </div>
+                    <div class="harvest-stat-item">
+                      <div class="harvest-stat-label">Luas Lahan</div>
+                      <div class="harvest-stat-value">{{ item.land_area ? `${formatNumber(item.land_area, 2)} m²` : '-' }}</div>
+                    </div>
+                    <div class="harvest-stat-item text-right">
+                      <div class="harvest-stat-label">Produktivitas</div>
+                      <div class="harvest-stat-value">
+                        {{ item.land_area && item.harvest_quantity ? `${formatNumber(item.harvest_quantity / item.land_area, 2)} ${item.harvest_unit || 'kg'}/m²` : '-' }}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="harvest-meta q-mt-sm">
+                    <div class="meta-line">Input: <b>{{ item.created_by?.name || '-' }}</b></div>
+                    <div class="meta-line">Waktu: {{ formatDateTime(item.created_datetime) }}</div>
+                  </div>
+
+                  <div class="row q-mt-sm justify-end">
+                    <q-btn
+                      dense
+                      unelevated
+                      color="primary"
+                      icon="visibility"
+                      label="Lihat Detail"
+                      @click="openHarvestDetail(item)"
+                    />
+                  </div>
+                </q-card-section>
+              </q-card>
+            </div>
+          </q-card-section>
+        </q-card>
+
         <q-card flat bordered class="q-mb-md analysis-card">
           <q-card-section>
             <div class="row items-center justify-between q-col-gutter-sm">
@@ -598,133 +682,6 @@ const isBs = page.props.auth?.user?.role === "bs";
             </div>
           </q-card-section>
         </q-card>
-
-        <q-card flat bordered class="q-mb-md">
-          <q-card-section>
-            <div class="row items-center justify-between q-col-gutter-sm">
-              <div class="col-12 col-md-auto">
-                <div class="text-subtitle1 text-weight-medium">Detail Input BS</div>
-                <div class="text-caption text-grey-7 q-mt-xs">
-                  Menampilkan data detail sesuai yang diinput oleh BS.
-                </div>
-              </div>
-            </div>
-
-            <q-markup-table flat bordered dense class="q-mt-sm">
-              <thead>
-                <tr>
-                  <th class="text-left">Tanggal</th>
-                  <th class="text-left">Varietas</th>
-                  <th class="text-left">Petani</th>
-                  <th class="text-right">Panen</th>
-                  <th class="text-right">Lahan</th>
-                  <th class="text-left">Zona</th>
-                  <th class="text-left">Penginput</th>
-                  <th class="text-right">Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="item in harvestItems" :key="`detail-row-${item.id}`">
-                  <td>{{ formatDate(item.harvest_date) }}</td>
-                  <td>{{ item.product?.name || '-' }}</td>
-                  <td>{{ item.farmer_name || '-' }}</td>
-                  <td class="text-right">{{ formatNumber(item.harvest_quantity, 2) }} {{ item.harvest_unit || 'kg' }}</td>
-                  <td class="text-right">{{ item.land_area ? `${formatNumber(item.land_area, 2)} m²` : '-' }}</td>
-                  <td>
-                    <span v-if="item.altitude_mdpl !== null && item.altitude_mdpl !== undefined">
-                      {{ altitudeZone(item.altitude_mdpl) }}
-                    </span>
-                    <span v-else>-</span>
-                  </td>
-                  <td>{{ item.created_by?.name || '-' }}</td>
-                  <td class="text-right">
-                    <q-btn
-                      dense
-                      flat
-                      color="primary"
-                      icon="visibility"
-                      label="Detail"
-                      @click="openHarvestDetail(item)"
-                    />
-                  </td>
-                </tr>
-              </tbody>
-            </q-markup-table>
-          </q-card-section>
-        </q-card>
-
-        <div class="row q-col-gutter-sm">
-          <div v-for="item in harvestItems" :key="item.id" class="col-12 col-md-6 col-lg-4">
-          <q-card flat bordered class="harvest-card">
-            <q-img
-              v-if="item.photo_path"
-              :src="'/' + item.photo_path"
-              ratio="16/9"
-              class="harvest-photo"
-            />
-            <q-card-section>
-              <div class="text-subtitle2 text-weight-medium">{{ item.product?.name || '-' }}</div>
-              <div class="text-caption text-grey-7 q-mt-xs">
-                Nama Petani: <b>{{ item.farmer_name || '-' }}</b>
-              </div>
-              <div class="text-caption text-grey-7">
-                Diinput oleh: <b>{{ item.created_by?.name || '-' }}</b>
-              </div>
-              <div class="text-caption text-grey-7">
-                Waktu input: {{ formatDateTime(item.created_datetime) }}
-              </div>
-
-              <div class="q-mt-sm text-body2">
-                <div><b>Tanggal Panen:</b> {{ formatDate(item.harvest_date) }}</div>
-                <div v-if="item.harvest_age_days"><b>Umur Panen:</b> {{ item.harvest_age_days }} hari</div>
-                <div v-if="item.land_area"><b>Luas Lahan:</b> {{ item.land_area }} m²</div>
-                <div v-if="item.altitude_mdpl !== null && item.altitude_mdpl !== undefined">
-                  <b>Ketinggian:</b> {{ formatNumber(item.altitude_mdpl, 0) }} mdpl ({{ altitudeZone(item.altitude_mdpl) }})
-                </div>
-                <div v-if="item.demo_plot?.population"><b>Populasi Tanam:</b> {{ formatNumber(item.demo_plot.population, 0) }} pohon</div>
-                <div v-if="item.is_multiple_harvest" class="text-primary">
-                  <q-icon name="cached" size="16px" /> Beberapa kali panen
-                </div>
-                <div class="q-mt-xs">
-                  <b>Total Hasil:</b> {{ item.harvest_quantity }} {{ item.harvest_unit }}
-                </div>
-              </div>
-
-              <div
-                v-if="item.is_multiple_harvest && item.harvest_cycles && item.harvest_cycles.length"
-                class="q-mt-sm"
-              >
-                <div class="text-caption text-grey-7 q-mb-xs"><b>Rincian Panen Bertahap</b></div>
-                <div class="column q-gutter-xs">
-                  <div
-                    v-for="(cycle, idx) in item.harvest_cycles"
-                    :key="`${item.id}-${idx}`"
-                    class="text-caption bg-grey-1 q-px-sm q-py-xs rounded-borders"
-                  >
-                    <b>{{ cycle.label || `K${idx + 1}` }}</b>
-                    - {{ formatNumber(cycle.quantity, 2) }} {{ item.harvest_unit }}
-                    <span v-if="cycle.date"> | {{ formatDate(cycle.date) }}</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Summary Calculation -->
-              <q-separator class="q-my-sm" />
-              <div class="text-body2 bg-blue-50 q-pa-xs rounded">
-                <div v-if="item.land_area && item.harvest_quantity" class="text-info">
-                  <b>Produktivitas:</b> {{ formatNumber(item.harvest_quantity / item.land_area, 2) }} {{ item.harvest_unit }}/m²
-                </div>
-              </div>
-
-              <q-separator class="q-my-sm" v-if="item.strengths || item.weaknesses || item.notes" />
-
-              <div v-if="item.strengths" class="text-body2"><b>Kekuatan:</b> {{ item.strengths }}</div>
-              <div v-if="item.weaknesses" class="text-body2 q-mt-xs"><b>Kelemahan:</b> {{ item.weaknesses }}</div>
-              <div v-if="item.notes" class="text-body2 q-mt-xs"><b>Catatan:</b> {{ item.notes }}</div>
-            </q-card-section>
-          </q-card>
-        </div>
-      </div>
       </div>
 
       <q-dialog v-model="harvestDetailDialog" maximized>
@@ -888,16 +845,134 @@ const isBs = page.props.auth?.user?.role === "bs";
   line-height: 1.3;
 }
 
-.harvest-card {
-  height: 100%;
+.harvest-feed-shell {
+  background: linear-gradient(180deg, #f9fcff 0%, #ffffff 100%);
+  border-color: #dbe8f3;
 }
 
-.harvest-photo {
-  background: #f5f5f5;
+.harvest-gallery-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+@media (min-width: 900px) {
+  .harvest-gallery-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1300px) {
+  .harvest-gallery-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.harvest-entry-card {
+  border-radius: 12px;
+  overflow: hidden;
+  border-color: #dce7ef;
+  background: #ffffff;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.harvest-entry-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 22px rgba(18, 48, 84, 0.12);
+}
+
+.harvest-thumb-wrap {
+  position: relative;
+}
+
+.harvest-thumb,
+.harvest-no-thumb {
+  width: 100%;
+}
+
+.harvest-no-thumb {
+  aspect-ratio: 4 / 3;
+}
+
+.harvest-tag-row {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.harvest-tag {
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 4px 9px;
+  color: #fff;
+}
+
+.zone-tag {
+  background: rgba(27, 74, 130, 0.84);
+}
+
+.cycle-tag {
+  background: rgba(13, 102, 64, 0.86);
+}
+
+.harvest-title {
+  font-size: 16px;
+  line-height: 1.2;
+  font-weight: 800;
+  color: #20354f;
+}
+
+.harvest-subtitle {
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #4f6478;
+}
+
+.harvest-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.harvest-stat-item {
+  padding: 8px;
+  border-radius: 8px;
+  background: #f6f9fd;
+  border: 1px solid #e4edf5;
+}
+
+.harvest-stat-label {
+  font-size: 11px;
+  color: #73879b;
+}
+
+.harvest-stat-value {
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #173554;
+}
+
+.harvest-meta {
+  border-top: 1px dashed #d9e5ef;
+  padding-top: 8px;
+}
+
+.meta-line {
+  font-size: 12px;
+  color: #597086;
+  line-height: 1.45;
 }
 
 .analysis-card {
   background: #f8fbff;
+  border-color: #dce8f3;
 }
 
 .analysis-metric {
