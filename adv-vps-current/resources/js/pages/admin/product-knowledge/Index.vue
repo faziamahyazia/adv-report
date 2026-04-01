@@ -26,9 +26,17 @@ const productOptions = [
   ...availableProducts.map((p) => ({ value: p.id, label: p.name })),
 ];
 
+const altitudeZoneOptions = [
+  { value: "all", label: "Semua Zona" },
+  { value: "lowland", label: "Lowland (0-400 mdpl)" },
+  { value: "middleland", label: "Middleland (401-700 mdpl)" },
+  { value: "highland", label: "Highland (>700 mdpl)" },
+];
+
 const harvestFilter = reactive({
   search: "",
   product_id: "all",
+  altitude_zone: "all",
 });
 
 const harvestItems = ref([]);
@@ -206,6 +214,20 @@ const isBs = page.props.auth?.user?.role === "bs";
               outlined
               bg-color="white"
               style="min-width:160px; max-width:220px"
+            />
+          </div>
+          <div v-if="activeTab === 'harvest'" class="col-auto">
+            <q-select
+              v-model="harvestFilter.altitude_zone"
+              :options="altitudeZoneOptions"
+              option-value="value"
+              option-label="label"
+              emit-value
+              map-options
+              dense
+              outlined
+              bg-color="white"
+              style="min-width:210px; max-width:260px"
             />
           </div>
         </div>

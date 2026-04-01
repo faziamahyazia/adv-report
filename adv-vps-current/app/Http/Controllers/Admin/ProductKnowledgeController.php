@@ -168,6 +168,20 @@ class ProductKnowledgeController extends Controller
             $q->where('product_id', (int) $filter['product_id']);
         }
 
+        if (!empty($filter['altitude_zone']) && $filter['altitude_zone'] !== 'all') {
+            switch ($filter['altitude_zone']) {
+                case 'lowland':
+                    $q->whereNotNull('altitude_mdpl')->whereBetween('altitude_mdpl', [0, 400]);
+                    break;
+                case 'middleland':
+                    $q->whereNotNull('altitude_mdpl')->whereBetween('altitude_mdpl', [401, 700]);
+                    break;
+                case 'highland':
+                    $q->whereNotNull('altitude_mdpl')->where('altitude_mdpl', '>', 700);
+                    break;
+            }
+        }
+
         return response()->json($q->limit(200)->get());
     }
 
