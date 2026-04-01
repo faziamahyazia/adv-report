@@ -3,8 +3,8 @@
     <Head title="Input Data Hasil Panen" />
 
     <div class="harvest-page q-pa-sm q-pa-md-md">
-      <div class="row q-col-gutter-md items-stretch">
-        <div class="col-12">
+      <div class="row q-col-gutter-md items-stretch harvest-layout">
+        <div class="col-12 harvest-main-col">
           <q-card flat bordered class="harvest-card">
             <q-card-section class="q-pb-none">
               <div class="text-h6 text-weight-bold">Input Data Hasil Panen</div>
@@ -14,7 +14,7 @@
             </q-card-section>
 
             <q-card-section>
-              <div class="row q-col-gutter-md">
+              <div class="row q-col-gutter-md form-grid">
                 <div class="col-12 col-md-6 col-xl-3">
                   <q-option-group
                     v-model="form.farmer_source"
@@ -272,7 +272,7 @@
           </q-card>
         </div>
 
-        <div class="col-12">
+        <div class="col-12 harvest-summary-col">
           <q-card flat bordered class="harvest-card summary-card">
             <q-card-section>
               <div class="text-subtitle1 text-weight-medium">Ringkasan Input</div>
@@ -558,10 +558,14 @@ async function submitHarvest() {
 .harvest-page {
   width: 100%;
   max-width: none;
+  margin: 0;
 }
 
 .harvest-card {
   border-radius: 12px;
+  width: 100%;
+  background: #ffffff;
+  border-color: #e5e7eb;
 }
 
 .cycle-card {
@@ -569,14 +573,53 @@ async function submitHarvest() {
   background: #fbfdff;
 }
 
+.harvest-layout {
+  width: 100%;
+  margin: 0;
+}
+
+.harvest-main-col,
+.harvest-summary-col {
+  width: 100%;
+}
+
+.form-grid {
+  align-items: start;
+}
+
+.summary-card {
+  background: #f9fafb;
+}
+
 @media (min-width: 1200px) {
   .harvest-page {
-    padding-left: 16px;
-    padding-right: 16px;
+    padding-left: 12px;
+    padding-right: 12px;
   }
 
-  .harvest-card :deep(.q-field__control) {
-    min-height: 44px;
+  .harvest-layout {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  .harvest-main-col,
+  .harvest-summary-col {
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .harvest-card {
+    border-radius: 14px;
+  }
+
+  .form-grid :deep(.q-field__control) {
+    min-height: 46px;
+  }
+
+  .form-grid :deep(.q-field--outlined .q-field__control) {
+    border-radius: 10px;
   }
 
   .summary-card .q-list {
@@ -592,6 +635,11 @@ async function submitHarvest() {
 }
 
 @media (min-width: 1700px) {
+  .harvest-page {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
   .summary-card .q-list {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
