@@ -76,7 +76,7 @@
                     <div class="text-caption q-mt-xs">
                       Petani: <b>{{ selectedDemoPlot.owner_name || '-' }}</b>
                       | Produk: <b>{{ selectedDemoPlot.product_name || '-' }}</b>
-                      | Populasi Tanam: <b>{{ safeNumber(selectedDemoPlot.population, 0) }} pcs</b>
+                      | Populasi Tanam: <b>{{ safeNumber(selectedDemoPlot.population, 0) }} pohon</b>
                       <span v-if="selectedDemoPlot.plant_date"> | Tgl Tanam: <b>{{ selectedDemoPlot.plant_date }}</b></span>
                     </div>
                   </q-banner>
@@ -151,7 +151,7 @@
                     outlined
                     dense
                     disable
-                    label="Populasi Tanam dari Demo Plot (pcs)"
+                    label="Populasi Tanam dari Demo Plot (pohon)"
                     min="0"
                   />
                 </div>
@@ -285,7 +285,7 @@
                 </q-item>
                 <q-item>
                   <q-item-section>Populasi Tanam</q-item-section>
-                  <q-item-section side>{{ selectedDemoPlot ? safeNumber(selectedDemoPlot.population, 0) : '-' }} pcs</q-item-section>
+                  <q-item-section side>{{ selectedDemoPlot ? safeNumber(selectedDemoPlot.population, 0) : '-' }} pohon</q-item-section>
                 </q-item>
                 <q-item>
                   <q-item-section>Produktivitas</q-item-section>
@@ -312,6 +312,7 @@ import { computed, reactive, ref, watch } from "vue";
 import { Head, usePage } from "@inertiajs/vue3";
 import { useQuasar } from "quasar";
 import axios from "axios";
+import dayjs from "dayjs";
 import Layout from "@/layouts/AuthenticatedLayout.vue";
 
 const $q = useQuasar();
@@ -362,7 +363,7 @@ const demoPlotOptions = computed(() => {
     })
     .map((item) => ({
       value: item.id,
-      label: `${item.owner_name || '-'} | ${item.product_name || '-'} | ${safeNumber(item.population, 0)} pcs`,
+      label: `${item.owner_name || '-'} | ${item.product_name || '-'} | ${safeNumber(item.population, 0)} pohon`,
     }));
 });
 
@@ -419,7 +420,24 @@ watch(selectedDemoPlot, (plot) => {
   }
   form.farmer_name = plot.owner_name || "";
   form.product_id = plot.product_id || null;
+
+  const referenceDate = form.harvest_date || dayjs().format("YYYY-MM-DD");
+  if (plot.plant_date) {
+    const ageDays = dayjs(referenceDate).diff(dayjs(plot.plant_date), "day");
+    form.harvest_age_days = ageDays > 0 ? ageDays : null;
+  }
 });
+
+watch(
+  () => form.harvest_date,
+  (date) => {
+    if (!date || !selectedDemoPlot.value?.plant_date || form.farmer_source !== "demo_plot") {
+      return;
+    }
+    const ageDays = dayjs(date).diff(dayjs(selectedDemoPlot.value.plant_date), "day");
+    form.harvest_age_days = ageDays > 0 ? ageDays : null;
+  }
+);
 
 watch(totalHarvestQuantity, (value) => {
   if (form.is_multiple_harvest) {

@@ -14,9 +14,10 @@ const form = useForm({
   name: page.props.data.name,
   uom_1: page.props.data.uom_1,
   uom_2: page.props.data.uom_2,
-  price_1: parseFloat(page.props.data.price_1),
-  price_2: parseFloat(page.props.data.price_2),
-  weight: parseInt(page.props.data.weight),
+  price_1: parseFloat(page.props.data.price_1 || 0),
+  price_2: parseFloat(page.props.data.price_2 || 0),
+  weight: parseInt(page.props.data.weight || 0),
+  jumlah_biji_per_pcs: parseInt(page.props.data.jumlah_biji_per_pcs || 0),
   active: !!page.props.data.active,
   notes: page.props.data.notes,
 });
@@ -119,6 +120,15 @@ const { filteredCategories, filterCategories } = useProductCategoryFilter(
                 :disable="form.processing"
                 :error="!!form.errors.weight"
                 :errorMessage="form.errors.weight"
+                hide-bottom-space
+              />
+              <LocaleNumberInput
+                v-model:modelValue="form.jumlah_biji_per_pcs"
+                label="Jumlah Biji per pcs"
+                lazyRules
+                :disable="form.processing"
+                :error="!!form.errors.jumlah_biji_per_pcs"
+                :errorMessage="form.errors.jumlah_biji_per_pcs"
                 hide-bottom-space
               />
               <div style="margin-left: -10px">

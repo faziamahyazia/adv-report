@@ -107,6 +107,7 @@ class ProductController extends Controller
             'active' => 'nullable|boolean',
             'notes' => 'nullable|max:1000',
             'weight' => 'required|numeric',
+            'jumlah_biji_per_pcs' => 'nullable|integer|min:1',
         ]);
 
         $item = $request->id ? Product::findOrFail($request->id) : new Product();

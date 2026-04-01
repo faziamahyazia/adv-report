@@ -88,6 +88,13 @@ const $q = useQuasar();
                     </td>
                   </tr>
                   <tr>
+                    <td>Jumlah Biji per pcs</td>
+                    <td>:</td>
+                    <td>
+                      {{ page.props.data.jumlah_biji_per_pcs ? formatNumber(page.props.data.jumlah_biji_per_pcs) : '-' }}
+                    </td>
+                  </tr>
+                  <tr>
                     <td>Catatan</td>
                     <td>:</td>
                     <td>{{ page.props.data.notes }}</td>

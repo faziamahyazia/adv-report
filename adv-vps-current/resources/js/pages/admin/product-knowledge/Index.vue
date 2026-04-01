@@ -292,7 +292,7 @@ const isBs = page.props.auth?.user?.role === "bs";
                 <div><b>Tanggal Panen:</b> {{ formatDate(item.harvest_date) }}</div>
                 <div v-if="item.harvest_age_days"><b>Umur Panen:</b> {{ item.harvest_age_days }} hari</div>
                 <div v-if="item.land_area"><b>Luas Lahan:</b> {{ item.land_area }} m²</div>
-                <div v-if="item.demo_plot?.population"><b>Populasi Tanam:</b> {{ formatNumber(item.demo_plot.population, 0) }} pcs</div>
+                <div v-if="item.demo_plot?.population"><b>Populasi Tanam:</b> {{ formatNumber(item.demo_plot.population, 0) }} pohon</div>
                 <div v-if="item.is_multiple_harvest" class="text-primary">
                   <q-icon name="cached" size="16px" /> Beberapa kali panen
                 </div>

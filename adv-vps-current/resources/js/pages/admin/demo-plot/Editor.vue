@@ -4,7 +4,7 @@ import { handleSubmit } from "@/helpers/client-req-handler";
 import { scrollToFirstErrorField } from "@/helpers/utils";
 import DatePicker from "@/components/DatePicker.vue";
 import dayjs from "dayjs";
-import { ref, onMounted } from "vue";
+import { ref, onMounted, computed, watch } from "vue";
 import LocaleNumberInput from "@/components/LocaleNumberInput.vue";
 
 const page = usePage();
@@ -24,7 +24,15 @@ const users = page.props.users.map((user) => ({
 const products = page.props.products.map((product) => ({
   value: product.id,
   label: `${product.name}`,
+  jumlah_biji_per_pcs: Number(product.jumlah_biji_per_pcs || 0),
 }));
+
+const existingPopulation = Number(page.props.data.population || 0);
+const existingSeedPerPcs = Number(
+  page.props.products.find((p) => Number(p.id) === Number(page.props.data.product_id))
+    ?.jumlah_biji_per_pcs || 0
+);
+const estimatedPcs = existingSeedPerPcs > 0 ? Math.ceil(existingPopulation / existingSeedPerPcs) : null;
 
 const form = useForm({
   id: page.props.data.id,
@@ -35,6 +43,7 @@ const form = useForm({
   owner_name: page.props.data.owner_name,
   owner_phone: page.props.data.owner_phone,
   field_location: page.props.data.field_location,
+  population_pcs: estimatedPcs,
   population: page.props.data.population,
   plant_date: dayjs(page.props.data.plant_date).format("YYYY-MM-DD"),
   // plant_status: page.props.data.plant_status,
@@ -44,6 +53,34 @@ const form = useForm({
   image_path: page.props.data.image_path,
   image: null,
 });
+
+const selectedProduct = computed(() => {
+  return products.find((item) => Number(item.value) === Number(form.product_id || 0));
+});
+
+const seedPerPcs = computed(() => Number(selectedProduct.value?.jumlah_biji_per_pcs || 0));
+
+const estimatedPopulation = computed(() => {
+  const pcs = Number(form.population_pcs || 0);
+  if (pcs <= 0 || seedPerPcs.value <= 0) {
+    return 0;
+  }
+  return pcs * seedPerPcs.value;
+});
+
+watch(
+  () => form.population_pcs,
+  () => {
+    form.population = estimatedPopulation.value;
+  }
+);
+
+watch(
+  () => form.product_id,
+  () => {
+    form.population = estimatedPopulation.value;
+  }
+);
 
 const submit = () =>
   handleSubmit({
@@ -195,21 +232,41 @@ function removeLocation() {
                 hide-bottom-space
               />
               <LocaleNumberInput
-                v-model.trim="form.population"
+                v-model.trim="form.population_pcs"
                 type="text"
-                label="Populasi"
+                label="Jumlah Tanam (pcs)"
                 lazy-rules
                 :disable="form.processing"
-                :error="!!form.errors.population"
-                :error-message="form.errors.population"
+                :error="!!form.errors.population_pcs"
+                :error-message="form.errors.population_pcs"
                 :rules="[
-                  (val) => !!val || 'Populasi harus diisi.',
+                  (val) => !!val || 'Jumlah tanam (pcs) harus diisi.',
                   (val) => {
                     const number = parseInt(String(val).replace(/\D/g, ''), 10);
-                    return number > 0 || 'Populasi harus lebih dari 0.';
+                    return number > 0 || 'Jumlah tanam (pcs) harus lebih dari 0.';
                   },
                 ]"
                 hide-bottom-space
+              />
+              <q-banner
+                rounded
+                class="bg-blue-1 text-blue-9 q-mt-sm"
+                v-if="form.product_id"
+              >
+                <div class="text-caption">
+                  Konversi otomatis: 1 pcs = <b>{{ seedPerPcs || 0 }}</b> biji.
+                  <span v-if="seedPerPcs > 0">
+                    Estimasi populasi: <b>{{ estimatedPopulation }}</b> pohon.
+                  </span>
+                </div>
+              </q-banner>
+              <q-input
+                class="q-mt-sm"
+                outlined
+                dense
+                disable
+                :model-value="estimatedPopulation > 0 ? estimatedPopulation : '-'"
+                label="Estimasi Populasi (pohon)"
               />
               <q-input
                 v-model.trim="form.notes"

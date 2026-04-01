@@ -118,7 +118,8 @@ class DemoPlotController extends Controller
             'owner_phone'      => 'nullable|string|max:30',
             'notes'            => 'nullable|string|max:500',
             'field_location'   => 'nullable|string|max:100',
-            'population'       => 'required|numeric|gt:0',
+            'population_pcs'   => 'required|numeric|gt:0',
+            'population'       => 'nullable|numeric|gt:0',
             'latlong'          => 'nullable|string|max:100',
             'image'            => 'nullable|image|max:5120',
             'image_path'       => 'nullable|string',
@@ -181,7 +182,17 @@ class DemoPlotController extends Controller
             }
         }
 
-        $validated['population'] = $validated['population'] ?: 0;
+        $product = Product::query()->findOrFail((int) $validated['product_id']);
+        $bijiPerPcs = (int) ($product->jumlah_biji_per_pcs ?? 0);
+        if ($bijiPerPcs <= 0) {
+            return back()
+                ->withErrors(['product_id' => 'Varietas belum memiliki nilai Jumlah Biji per pcs di Master Data.'])
+                ->withInput();
+        }
+
+        $populationPcs = (int) $validated['population_pcs'];
+        $validated['population'] = $populationPcs * $bijiPerPcs;
+        unset($validated['population_pcs']);
 
         $item->fill($validated);
         $item->save();

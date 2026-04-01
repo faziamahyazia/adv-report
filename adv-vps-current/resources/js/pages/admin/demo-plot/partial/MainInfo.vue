@@ -73,7 +73,12 @@ const showViewer = ref(false);
       <tr>
         <td>Populasi</td>
         <td>:</td>
-        <td>{{ formatNumber(page.props.data.population) }}</td>
+        <td>{{ formatNumber(page.props.data.population) }} pohon</td>
+      </tr>
+      <tr>
+        <td>Biji per pcs</td>
+        <td>:</td>
+        <td>{{ page.props.data.product?.jumlah_biji_per_pcs ? formatNumber(page.props.data.product.jumlah_biji_per_pcs) : '-' }}</td>
       </tr>
       <tr>
         <td>Status Terkini</td>
