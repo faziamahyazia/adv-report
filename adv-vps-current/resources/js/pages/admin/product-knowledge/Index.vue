@@ -41,6 +41,7 @@ const harvestFilter = reactive({
 
 const harvestItems = ref([]);
 const harvestLoading = ref(false);
+const harvestViewMode = ref("card");
 const harvestDetailDialog = ref(false);
 const selectedHarvest = ref(null);
 const editMode = ref(false);
@@ -688,12 +689,28 @@ const isBs = page.props.auth?.user?.role === "bs";
                   Tampilan kartu dengan thumbnail dan data utama seperti galeri Product Knowledge.
                 </div>
               </div>
-              <div class="col-12 col-md-auto text-caption text-grey-7">
-                Total data: <b>{{ harvestItems.length }}</b>
+              <div class="col-12 col-md-auto">
+                <div class="row items-center q-gutter-sm justify-end">
+                  <div class="text-caption text-grey-7">
+                    Total data: <b>{{ harvestItems.length }}</b>
+                  </div>
+                  <q-btn-toggle
+                    v-model="harvestViewMode"
+                    dense
+                    unelevated
+                    toggle-color="primary"
+                    color="grey-3"
+                    text-color="grey-8"
+                    :options="[
+                      { label: 'Card', value: 'card', icon: 'view_module' },
+                      { label: 'Table', value: 'table', icon: 'table_rows' },
+                    ]"
+                  />
+                </div>
               </div>
             </div>
 
-            <div class="harvest-gallery-grid q-mt-md">
+            <div v-if="harvestViewMode === 'card'" class="harvest-gallery-grid q-mt-md">
               <q-card
                 v-for="item in harvestItems"
                 :key="`card-${item.id}`"
@@ -773,6 +790,48 @@ const isBs = page.props.auth?.user?.role === "bs";
                   </q-card-section>
                 </div>
               </q-card>
+            </div>
+
+            <div v-else class="q-mt-md harvest-table-wrap">
+              <q-markup-table flat bordered dense class="harvest-table">
+                <thead>
+                  <tr>
+                    <th class="text-left">Tanggal</th>
+                    <th class="text-left">Varietas / Petani</th>
+                    <th class="text-right">Panen</th>
+                    <th class="text-right">Lahan</th>
+                    <th class="text-right">Produktivitas</th>
+                    <th class="text-left">Zona</th>
+                    <th class="text-left">Input</th>
+                    <th class="text-right">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="item in harvestItems" :key="`table-${item.id}`">
+                    <td>{{ formatDate(item.harvest_date) }}</td>
+                    <td>
+                      <div class="text-weight-medium">{{ item.product?.name || '-' }}</div>
+                      <div class="text-caption text-grey-7">{{ item.farmer_name || '-' }}</div>
+                    </td>
+                    <td class="text-right">{{ formatNumber(item.harvest_quantity, 2) }} {{ item.harvest_unit || 'kg' }}</td>
+                    <td class="text-right">{{ item.land_area ? `${formatNumber(item.land_area, 2)} m²` : '-' }}</td>
+                    <td class="text-right">
+                      {{ item.land_area && item.harvest_quantity ? `${formatNumber(item.harvest_quantity / item.land_area, 2)} ${item.harvest_unit || 'kg'}/m²` : '-' }}
+                    </td>
+                    <td>
+                      {{ item.altitude_mdpl !== null && item.altitude_mdpl !== undefined ? altitudeZone(item.altitude_mdpl) : '-' }}
+                    </td>
+                    <td>
+                      <div>{{ item.created_by?.name || '-' }}</div>
+                      <div class="text-caption text-grey-7">{{ formatDateTime(item.created_datetime) }}</div>
+                    </td>
+                    <td class="text-right">
+                      <q-btn dense flat color="primary" icon="visibility" @click="openHarvestDetail(item)" />
+                      <q-btn v-if="item.can_edit" dense flat color="secondary" icon="edit" @click="openHarvestEdit(item)" />
+                    </td>
+                  </tr>
+                </tbody>
+              </q-markup-table>
             </div>
           </q-card-section>
         </q-card>
@@ -1212,6 +1271,27 @@ const isBs = page.props.auth?.user?.role === "bs";
   max-width: none !important;
   background: linear-gradient(180deg, #f9fcff 0%, #ffffff 100%);
   border-color: #dbe8f3;
+}
+
+.harvest-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.harvest-table {
+  min-width: 980px;
+}
+
+.harvest-table thead th {
+  background: #f3f7fc;
+  color: #3d5875;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.harvest-table tbody td {
+  border-color: #e6edf4;
 }
 
 .harvest-gallery-grid {
