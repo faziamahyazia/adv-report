@@ -15,6 +15,8 @@ return [
 
         'admin.product-knowledge.index',
         'admin.product-knowledge.data',
+        'admin.product-knowledge.harvest-data',
+        'admin.product-knowledge.harvest-store',
         'admin.product-knowledge.gallery',
 
         'admin.demo-plot.index',
@@ -117,6 +119,7 @@ return [
 
         'admin.product-knowledge.index',
         'admin.product-knowledge.data',
+        'admin.product-knowledge.harvest-data',
         'admin.product-knowledge.gallery',
 
         'admin.customer.index',
@@ -260,6 +263,7 @@ return [
 
         'admin.product-knowledge.index',
         'admin.product-knowledge.data',
+        'admin.product-knowledge.harvest-data',
         'admin.product-knowledge.gallery',
 
         'admin.customer.index',

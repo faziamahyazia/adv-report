@@ -112,6 +112,8 @@ Route::middleware([Auth::class])->group(function () {
             Route::prefix('product-knowledge')->group(function () {
                 Route::get('', [ProductKnowledgeController::class, 'index'])->name('admin.product-knowledge.index');
                 Route::get('data', [ProductKnowledgeController::class, 'data'])->name('admin.product-knowledge.data');
+                Route::get('harvest-data', [ProductKnowledgeController::class, 'harvestData'])->name('admin.product-knowledge.harvest-data');
+                Route::post('harvest-store', [ProductKnowledgeController::class, 'harvestStore'])->name('admin.product-knowledge.harvest-store');
                 Route::get('{id}/gallery', [ProductKnowledgeController::class, 'gallery'])->name('admin.product-knowledge.gallery');
                 Route::get('{id}/photo-editor', [ProductKnowledgeController::class, 'photoEditor'])->name('admin.product-knowledge.photo-editor');
                 Route::post('{id}/photo-save', [ProductKnowledgeController::class, 'photoSave'])->name('admin.product-knowledge.photo-save');
