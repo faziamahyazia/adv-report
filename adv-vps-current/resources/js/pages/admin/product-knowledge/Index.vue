@@ -1085,7 +1085,7 @@ const isBs = page.props.auth?.user?.role === "bs";
               </q-card-section>
             </q-card>
 
-            <div class="row q-col-gutter-md">
+            <div class="row q-col-gutter-md detail-body-grid">
               <div class="col-12" v-if="selectedHarvest.photo_path">
                 <q-card flat bordered class="q-mb-sm">
                   <q-img :src="'/' + selectedHarvest.photo_path" ratio="21/7" class="detail-photo-banner" />
@@ -1465,6 +1465,19 @@ const isBs = page.props.auth?.user?.role === "bs";
   border-radius: 14px;
 }
 
+.harvest-detail-card > .q-card__section {
+  width: 100%;
+}
+
+.harvest-detail-card .q-card {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+.detail-body-grid {
+  align-items: stretch;
+}
+
 .detail-header {
   border-bottom: 1px solid #e8edf3;
 }
@@ -1504,6 +1517,16 @@ const isBs = page.props.auth?.user?.role === "bs";
   display: grid;
   grid-template-columns: 160px minmax(0, 1fr);
   gap: 8px 10px;
+}
+
+@media (min-width: 1024px) {
+  .detail-body-grid > .col-12.col-md-6 {
+    display: flex;
+  }
+
+  .detail-body-grid > .col-12.col-md-6 > .q-card {
+    height: 100%;
+  }
 }
 
 .detail-key {
