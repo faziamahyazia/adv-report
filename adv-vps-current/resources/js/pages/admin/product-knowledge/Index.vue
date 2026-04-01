@@ -943,6 +943,7 @@ const isBs = page.props.auth?.user?.role === "bs";
                 <thead>
                   <tr>
                     <th class="text-left">Tanggal</th>
+                    <th class="text-left">Foto</th>
                     <th class="text-left">Varietas / Petani</th>
                     <th class="text-right">Panen</th>
                     <th class="text-right">Hasil / PCS</th>
@@ -955,6 +956,19 @@ const isBs = page.props.auth?.user?.role === "bs";
                 <tbody>
                   <tr v-for="item in harvestItems" :key="`table-${item.id}`">
                     <td>{{ formatDate(item.harvest_date) }}</td>
+                    <td>
+                      <div class="table-thumb-wrap">
+                        <q-img
+                          v-if="item.photo_path"
+                          :src="'/' + item.photo_path"
+                          ratio="1"
+                          class="table-thumb"
+                        />
+                        <div v-else class="table-thumb table-thumb-empty flex flex-center">
+                          <q-icon name="image_not_supported" size="18px" color="grey-6" />
+                        </div>
+                      </div>
+                    </td>
                     <td>
                       <div class="text-weight-medium">{{ item.product?.name || '-' }}</div>
                       <div class="text-caption text-grey-7">{{ item.farmer_name || '-' }}</div>
@@ -1500,6 +1514,16 @@ const isBs = page.props.auth?.user?.role === "bs";
                   <q-card-section>
                     <div class="text-subtitle2 text-weight-medium q-mb-sm">Data Tambahan</div>
                     <div class="detail-grid">
+                      <div class="detail-key">Foto Thumbnail</div>
+                      <div class="detail-val">
+                        <q-img
+                          v-if="selectedHarvest.photo_path"
+                          :src="'/' + selectedHarvest.photo_path"
+                          ratio="4/3"
+                          class="detail-inline-thumb"
+                        />
+                        <span v-else>-</span>
+                      </div>
                       <div class="detail-key">Lokasi</div><div class="detail-val">{{ selectedHarvest.location || '-' }}</div>
                       <div class="detail-key">Populasi Demo Plot</div><div class="detail-val">{{ selectedHarvest.demo_plot?.population ? `${formatNumber(selectedHarvest.demo_plot.population, 0)} pohon` : '-' }}</div>
                       <div class="detail-key">Total PCS</div><div class="detail-val">{{ selectedHarvest.total_pieces ? formatNumber(selectedHarvest.total_pieces, 0) : '-' }}</div>
@@ -1675,6 +1699,22 @@ const isBs = page.props.auth?.user?.role === "bs";
 
 .harvest-table {
   min-width: 980px;
+}
+
+.table-thumb-wrap {
+  width: 52px;
+}
+
+.table-thumb {
+  width: 52px;
+  height: 52px;
+  border-radius: 8px;
+  border: 1px solid #dce7ef;
+  overflow: hidden;
+}
+
+.table-thumb-empty {
+  background: #f3f7fc;
 }
 
 .harvest-table thead th {
@@ -1934,6 +1974,13 @@ const isBs = page.props.auth?.user?.role === "bs";
   font-weight: 600;
   color: #223c57;
   word-break: break-word;
+}
+
+.detail-inline-thumb {
+  width: 140px;
+  border-radius: 8px;
+  border: 1px solid #dce7ef;
+  overflow: hidden;
 }
 
 .cycle-grid-compact {
