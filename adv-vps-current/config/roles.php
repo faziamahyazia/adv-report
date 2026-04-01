@@ -21,6 +21,8 @@ return [
 
         'admin.harvest-result.index',
         'admin.harvest-result.store',
+        'admin.harvest-result.update',
+        'admin.harvest-result.delete',
 
         'admin.demo-plot.index',
         'admin.demo-plot.data',
@@ -124,6 +126,9 @@ return [
         'admin.product-knowledge.data',
         'admin.product-knowledge.harvest-data',
         'admin.product-knowledge.gallery',
+
+        'admin.harvest-result.update',
+        'admin.harvest-result.delete',
 
         'admin.customer.index',
         'admin.customer.data',

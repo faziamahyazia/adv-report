@@ -17,7 +17,7 @@ class ProductKnowledgeController extends Controller
     {
         return inertia('admin/product-knowledge/Index', [
             'categories' => ProductCategory::orderBy('name')->get(['id', 'name']),
-            'products' => Product::where('active', true)->orderBy('name')->get(['id', 'name']),
+            'products' => Product::where('active', true)->orderBy('name')->get(['id', 'name', 'price_1', 'uom_1', 'price_2', 'uom_2']),
         ]);
     }
 
@@ -141,9 +141,10 @@ class ProductKnowledgeController extends Controller
     public function harvestData(Request $request)
     {
         $filter = $request->get('filter', []);
+        $user = $request->user();
 
         $q = ProductHarvestResult::with([
-            'product:id,name',
+            'product:id,name,price_1,uom_1,price_2,uom_2',
             'createdBy:id,name',
             'demoPlot:id,owner_name,population,product_id',
         ])->orderByDesc('created_datetime')->orderByDesc('id');
@@ -182,7 +183,18 @@ class ProductKnowledgeController extends Controller
             }
         }
 
-        return response()->json($q->limit(200)->get());
+        $items = $q->limit(200)->get()->map(function ($item) use ($user) {
+            $canManage = in_array($user->role, [User::Role_Admin, User::Role_Agronomist], true)
+                || ($user->role === User::Role_BS && (int) $item->created_by_uid === (int) $user->id);
+
+            $arr = $item->toArray();
+            $arr['can_edit'] = $canManage;
+            $arr['can_delete'] = $canManage;
+
+            return $arr;
+        })->values();
+
+        return response()->json($items);
     }
 
     public function harvestStore(Request $request)

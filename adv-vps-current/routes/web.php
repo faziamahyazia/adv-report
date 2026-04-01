@@ -125,6 +125,8 @@ Route::middleware([Auth::class])->group(function () {
             Route::prefix('harvest-result')->group(function () {
                 Route::get('', [HarvestResultController::class, 'index'])->name('admin.harvest-result.index');
                 Route::post('', [HarvestResultController::class, 'store'])->name('admin.harvest-result.store');
+                Route::post('update/{id}', [HarvestResultController::class, 'update'])->name('admin.harvest-result.update');
+                Route::post('delete/{id}', [HarvestResultController::class, 'delete'])->name('admin.harvest-result.delete');
             });
 
             Route::prefix('customers')->group(function () {

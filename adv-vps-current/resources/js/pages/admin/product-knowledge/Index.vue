@@ -43,6 +43,25 @@ const harvestItems = ref([]);
 const harvestLoading = ref(false);
 const harvestDetailDialog = ref(false);
 const selectedHarvest = ref(null);
+const editMode = ref(false);
+const savingEdit = ref(false);
+const deletingItem = ref(false);
+const editPhotoFile = ref(null);
+
+const editForm = reactive({
+  product_id: null,
+  demo_plot_id: null,
+  farmer_name: "",
+  harvest_date: "",
+  harvest_age_days: null,
+  harvest_quantity: null,
+  is_multiple_harvest: false,
+  land_area: null,
+  altitude_mdpl: null,
+  strengths: "",
+  weaknesses: "",
+  notes: "",
+});
 
 const productById = computed(() => {
   const map = new Map();
@@ -372,7 +391,96 @@ function exportHarvestDetailCsv() {
 
 function openHarvestDetail(item) {
   selectedHarvest.value = item;
+  resetEditForm(item);
+  editMode.value = false;
   harvestDetailDialog.value = true;
+}
+
+function resetEditForm(item) {
+  editForm.product_id = item?.product_id ?? null;
+  editForm.demo_plot_id = item?.demo_plot_id ?? null;
+  editForm.farmer_name = item?.farmer_name || "";
+  editForm.harvest_date = item?.harvest_date ? String(item.harvest_date).slice(0, 10) : "";
+  editForm.harvest_age_days = item?.harvest_age_days ?? null;
+  editForm.harvest_quantity = item?.harvest_quantity ?? null;
+  editForm.is_multiple_harvest = Boolean(item?.is_multiple_harvest);
+  editForm.land_area = item?.land_area ?? null;
+  editForm.altitude_mdpl = item?.altitude_mdpl ?? null;
+  editForm.strengths = item?.strengths || "";
+  editForm.weaknesses = item?.weaknesses || "";
+  editForm.notes = item?.notes || "";
+  editPhotoFile.value = null;
+}
+
+async function saveHarvestEdit() {
+  if (!selectedHarvest.value?.id) {
+    return;
+  }
+
+  savingEdit.value = true;
+  try {
+    const formData = new FormData();
+    formData.append("product_id", String(editForm.product_id || selectedHarvest.value.product_id || ""));
+    formData.append("harvest_date", editForm.harvest_date || "");
+    formData.append("harvest_quantity", String(editForm.harvest_quantity ?? 0));
+    formData.append("is_multiple_harvest", editForm.is_multiple_harvest ? "1" : "0");
+
+    if (editForm.demo_plot_id) formData.append("demo_plot_id", String(editForm.demo_plot_id));
+    if (editForm.farmer_name) formData.append("farmer_name", editForm.farmer_name);
+    if (editForm.harvest_age_days !== null && editForm.harvest_age_days !== "") formData.append("harvest_age_days", String(editForm.harvest_age_days));
+    if (editForm.land_area !== null && editForm.land_area !== "") formData.append("land_area", String(editForm.land_area));
+    if (editForm.altitude_mdpl !== null && editForm.altitude_mdpl !== "") formData.append("altitude_mdpl", String(editForm.altitude_mdpl));
+    if (editForm.strengths) formData.append("strengths", editForm.strengths);
+    if (editForm.weaknesses) formData.append("weaknesses", editForm.weaknesses);
+    if (editForm.notes) formData.append("notes", editForm.notes);
+    if (editPhotoFile.value) formData.append("photo", editPhotoFile.value);
+
+    await axios.post(route("admin.harvest-result.update", selectedHarvest.value.id), formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+
+    await fetchHarvests();
+    const updated = harvestItems.value.find((item) => Number(item.id) === Number(selectedHarvest.value.id));
+    if (updated) {
+      selectedHarvest.value = updated;
+      resetEditForm(updated);
+    }
+    editMode.value = false;
+    $q.notify({ type: "positive", message: "Data hasil panen berhasil diperbarui.", position: "top" });
+  } catch (error) {
+    const message = error?.response?.data?.message || "Gagal memperbarui data hasil panen.";
+    $q.notify({ type: "negative", message, position: "top" });
+  } finally {
+    savingEdit.value = false;
+  }
+}
+
+function confirmDeleteHarvest() {
+  if (!selectedHarvest.value?.id) {
+    return;
+  }
+
+  $q.dialog({
+    title: "Hapus Data Hasil Panen",
+    message: "Data yang dihapus tidak bisa dikembalikan. Lanjutkan?",
+    cancel: true,
+    persistent: true,
+    ok: { color: "negative", label: "Hapus" },
+  }).onOk(async () => {
+    deletingItem.value = true;
+    try {
+      await axios.post(route("admin.harvest-result.delete", selectedHarvest.value.id));
+      await fetchHarvests();
+      harvestDetailDialog.value = false;
+      selectedHarvest.value = null;
+      $q.notify({ type: "positive", message: "Data hasil panen berhasil dihapus.", position: "top" });
+    } catch (error) {
+      const message = error?.response?.data?.message || "Gagal menghapus data hasil panen.";
+      $q.notify({ type: "negative", message, position: "top" });
+    } finally {
+      deletingItem.value = false;
+    }
+  });
 }
 
 onMounted(async () => {
@@ -765,10 +873,90 @@ const isBs = page.props.auth?.user?.role === "bs";
           <q-card-section class="row items-center q-pb-none">
             <div class="text-h6">Detail Input Hasil Panen BS</div>
             <q-space />
+            <q-btn
+              v-if="selectedHarvest?.can_edit"
+              flat
+              dense
+              color="primary"
+              :label="editMode ? 'Batal Edit' : 'Edit Data'"
+              @click="editMode ? resetEditForm(selectedHarvest) : null; editMode = !editMode"
+            />
+            <q-btn
+              v-if="selectedHarvest?.can_delete"
+              flat
+              dense
+              color="negative"
+              label="Hapus"
+              :loading="deletingItem"
+              @click="confirmDeleteHarvest"
+            />
             <q-btn icon="close" flat round dense v-close-popup />
           </q-card-section>
 
           <q-card-section v-if="selectedHarvest" class="q-pt-sm">
+            <q-card v-if="editMode" flat bordered class="q-mb-md detail-summary-shell">
+              <q-card-section>
+                <div class="text-subtitle2 text-weight-medium">Edit Data Hasil Panen</div>
+                <div class="text-caption text-grey-7 q-mt-xs">BS penginput, agronomis, dan admin dapat mengubah data termasuk menambah/mengganti foto.</div>
+                <div class="row q-col-gutter-sm q-mt-sm">
+                  <div class="col-12 col-md-4">
+                    <q-select
+                      v-model="editForm.product_id"
+                      :options="productOptions.filter((x) => x.value !== 'all')"
+                      option-value="value"
+                      option-label="label"
+                      emit-value
+                      map-options
+                      dense
+                      outlined
+                      label="Varietas"
+                    />
+                  </div>
+                  <div class="col-12 col-md-4">
+                    <q-input v-model="editForm.farmer_name" dense outlined label="Nama Petani" />
+                  </div>
+                  <div class="col-12 col-md-4">
+                    <q-input v-model="editForm.harvest_date" type="date" dense outlined label="Tanggal Panen" />
+                  </div>
+                  <div class="col-12 col-md-3">
+                    <q-input v-model.number="editForm.harvest_quantity" type="number" min="0" step="0.01" dense outlined label="Total Panen (kg)" />
+                  </div>
+                  <div class="col-12 col-md-3">
+                    <q-input v-model.number="editForm.harvest_age_days" type="number" min="1" dense outlined label="Umur Panen (hari)" />
+                  </div>
+                  <div class="col-12 col-md-3">
+                    <q-input v-model.number="editForm.land_area" type="number" min="0" step="0.01" dense outlined label="Luas Lahan (m²)" />
+                  </div>
+                  <div class="col-12 col-md-3">
+                    <q-input v-model.number="editForm.altitude_mdpl" type="number" min="0" dense outlined label="Ketinggian (mdpl)" />
+                  </div>
+                  <div class="col-12 col-md-6">
+                    <q-input v-model="editForm.strengths" type="textarea" autogrow dense outlined label="Kekuatan" />
+                  </div>
+                  <div class="col-12 col-md-6">
+                    <q-input v-model="editForm.weaknesses" type="textarea" autogrow dense outlined label="Kelemahan" />
+                  </div>
+                  <div class="col-12">
+                    <q-input v-model="editForm.notes" type="textarea" autogrow dense outlined label="Catatan" />
+                  </div>
+                  <div class="col-12 col-md-6">
+                    <q-file
+                      v-model="editPhotoFile"
+                      dense
+                      outlined
+                      accept="image/*"
+                      label="Tambah / ganti foto panen"
+                      clearable
+                    />
+                  </div>
+                </div>
+                <div class="row justify-end q-gutter-sm q-mt-sm">
+                  <q-btn flat color="grey-7" label="Batal" @click="resetEditForm(selectedHarvest); editMode = false" />
+                  <q-btn color="primary" icon="save" label="Simpan Perubahan" :loading="savingEdit" @click="saveHarvestEdit" />
+                </div>
+              </q-card-section>
+            </q-card>
+
             <q-card flat bordered class="q-mb-md detail-summary-shell">
               <q-card-section>
                 <div class="text-subtitle2 text-weight-medium">Summary Analisis Detail</div>
