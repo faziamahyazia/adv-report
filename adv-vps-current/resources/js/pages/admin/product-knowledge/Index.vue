@@ -44,6 +44,14 @@ const harvestLoading = ref(false);
 const harvestDetailDialog = ref(false);
 const selectedHarvest = ref(null);
 
+const productById = computed(() => {
+  const map = new Map();
+  (availableProducts || []).forEach((item) => {
+    map.set(Number(item.id), item);
+  });
+  return map;
+});
+
 async function fetchProducts() {
   loading.value = true;
   try {
@@ -101,6 +109,70 @@ function formatNumber(value, digits = 2) {
   }
   return number.toFixed(digits);
 }
+
+function formatCurrency(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return "-";
+  }
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+  }).format(number);
+}
+
+function pickPriceByUom(product, keyword) {
+  if (!product) return null;
+  const k = String(keyword || "").toLowerCase();
+  const uom1 = String(product.uom_1 || "").toLowerCase();
+  const uom2 = String(product.uom_2 || "").toLowerCase();
+
+  if (uom1.includes(k)) return Number(product.price_1 || 0) || null;
+  if (uom2.includes(k)) return Number(product.price_2 || 0) || null;
+  return null;
+}
+
+const selectedHarvestMetrics = computed(() => {
+  const item = selectedHarvest.value;
+  if (!item) {
+    return null;
+  }
+
+  const qty = Number(item.harvest_quantity || 0);
+  const landArea = Number(item.land_area || 0);
+  const totalPcs = Number(item.total_pieces || 0);
+  const population = Number(item.demo_plot?.population || 0);
+  const perPieceYield = totalPcs > 0
+    ? (qty / totalPcs)
+    : (Number(item.per_piece_quantity || 0) || null);
+  const perTreeYield = population > 0 ? (qty / population) : null;
+  const productivity = landArea > 0 ? (qty / landArea) : null;
+
+  const product = productById.value.get(Number(item.product_id || 0));
+  const pricePerPcs = pickPriceByUom(product, "pcs");
+  const pricePerKg = pickPriceByUom(product, "kg");
+
+  const estimatedRevenueFromPcs = (pricePerPcs && totalPcs > 0)
+    ? (pricePerPcs * totalPcs)
+    : null;
+  const estimatedRevenueFromKg = (pricePerKg && qty > 0)
+    ? (pricePerKg * qty)
+    : null;
+  const estimatedRevenue = estimatedRevenueFromPcs ?? estimatedRevenueFromKg;
+
+  return {
+    qty,
+    totalPcs,
+    population,
+    perPieceYield,
+    perTreeYield,
+    productivity,
+    pricePerPcs,
+    estimatedRevenue,
+    estimatedRevenuePerPcs: (estimatedRevenue && totalPcs > 0) ? (estimatedRevenue / totalPcs) : null,
+  };
+});
 
 function altitudeZone(value) {
   const altitude = Number(value);
@@ -520,7 +592,7 @@ const isBs = page.props.auth?.user?.role === "bs";
                   <q-img
                     v-if="item.photo_path"
                     :src="'/' + item.photo_path"
-                    ratio="4/3"
+                    ratio="16/9"
                     class="harvest-thumb"
                   />
                   <div v-else class="harvest-no-thumb flex flex-center bg-grey-2">
@@ -688,8 +760,8 @@ const isBs = page.props.auth?.user?.role === "bs";
         </q-card>
       </div>
 
-      <q-dialog v-model="harvestDetailDialog" maximized>
-        <q-card>
+      <q-dialog v-model="harvestDetailDialog" full-width>
+        <q-card class="harvest-detail-card">
           <q-card-section class="row items-center q-pb-none">
             <div class="text-h6">Detail Input Hasil Panen BS</div>
             <q-space />
@@ -697,29 +769,92 @@ const isBs = page.props.auth?.user?.role === "bs";
           </q-card-section>
 
           <q-card-section v-if="selectedHarvest" class="q-pt-sm">
+            <q-card flat bordered class="q-mb-md detail-summary-shell">
+              <q-card-section>
+                <div class="text-subtitle2 text-weight-medium">Summary Analisis Detail</div>
+                <div class="text-caption text-grey-7 q-mt-xs">
+                  Nilai estimasi mengikuti data master harga produk (jika tersedia).
+                </div>
+
+                <div class="row q-col-gutter-sm q-mt-sm" v-if="selectedHarvestMetrics">
+                  <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+                    <div class="detail-metric-card">
+                      <div class="detail-metric-label">Total Panen</div>
+                      <div class="detail-metric-value">{{ formatNumber(selectedHarvestMetrics.qty, 2) }} {{ selectedHarvest.harvest_unit || 'kg' }}</div>
+                    </div>
+                  </div>
+                  <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+                    <div class="detail-metric-card">
+                      <div class="detail-metric-label">Hasil per PCS</div>
+                      <div class="detail-metric-value">{{ selectedHarvestMetrics.perPieceYield ? `${formatNumber(selectedHarvestMetrics.perPieceYield, 4)} ${selectedHarvest.harvest_unit || 'kg'}` : '-' }}</div>
+                    </div>
+                  </div>
+                  <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+                    <div class="detail-metric-card">
+                      <div class="detail-metric-label">Hasil per Pohon</div>
+                      <div class="detail-metric-value">{{ selectedHarvestMetrics.perTreeYield ? `${formatNumber(selectedHarvestMetrics.perTreeYield, 4)} ${selectedHarvest.harvest_unit || 'kg'}` : '-' }}</div>
+                    </div>
+                  </div>
+                  <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+                    <div class="detail-metric-card">
+                      <div class="detail-metric-label">Produktivitas</div>
+                      <div class="detail-metric-value">{{ selectedHarvestMetrics.productivity ? `${formatNumber(selectedHarvestMetrics.productivity, 2)} ${selectedHarvest.harvest_unit || 'kg'}/m²` : '-' }}</div>
+                    </div>
+                  </div>
+                  <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+                    <div class="detail-metric-card">
+                      <div class="detail-metric-label">Pendapatan per PCS</div>
+                      <div class="detail-metric-value">{{ formatCurrency(selectedHarvestMetrics.estimatedRevenuePerPcs) }}</div>
+                    </div>
+                  </div>
+                  <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+                    <div class="detail-metric-card">
+                      <div class="detail-metric-label">Estimasi Pendapatan</div>
+                      <div class="detail-metric-value">{{ formatCurrency(selectedHarvestMetrics.estimatedRevenue) }}</div>
+                    </div>
+                  </div>
+                </div>
+              </q-card-section>
+            </q-card>
+
             <div class="row q-col-gutter-md">
               <div class="col-12 col-md-6">
-                <div><b>Varietas:</b> {{ selectedHarvest.product?.name || '-' }}</div>
-                <div><b>Nama Petani:</b> {{ selectedHarvest.farmer_name || '-' }}</div>
-                <div><b>Tanggal Panen:</b> {{ formatDate(selectedHarvest.harvest_date) }}</div>
-                <div><b>Umur Panen:</b> {{ selectedHarvest.harvest_age_days ? `${selectedHarvest.harvest_age_days} hari` : '-' }}</div>
-                <div><b>Total Hasil:</b> {{ formatNumber(selectedHarvest.harvest_quantity, 2) }} {{ selectedHarvest.harvest_unit || 'kg' }}</div>
-                <div><b>Luas Lahan:</b> {{ selectedHarvest.land_area ? `${formatNumber(selectedHarvest.land_area, 2)} m²` : '-' }}</div>
-                <div><b>Ketinggian:</b>
-                  <span v-if="selectedHarvest.altitude_mdpl !== null && selectedHarvest.altitude_mdpl !== undefined">
-                    {{ formatNumber(selectedHarvest.altitude_mdpl, 0) }} mdpl ({{ altitudeZone(selectedHarvest.altitude_mdpl) }})
-                  </span>
-                  <span v-else>-</span>
-                </div>
+                <q-card flat bordered>
+                  <q-card-section>
+                    <div class="text-subtitle2 text-weight-medium q-mb-sm">Data Utama</div>
+                    <div class="detail-grid">
+                      <div class="detail-key">Varietas</div><div class="detail-val">{{ selectedHarvest.product?.name || '-' }}</div>
+                      <div class="detail-key">Nama Petani</div><div class="detail-val">{{ selectedHarvest.farmer_name || '-' }}</div>
+                      <div class="detail-key">Tanggal Panen</div><div class="detail-val">{{ formatDate(selectedHarvest.harvest_date) }}</div>
+                      <div class="detail-key">Umur Panen</div><div class="detail-val">{{ selectedHarvest.harvest_age_days ? `${selectedHarvest.harvest_age_days} hari` : '-' }}</div>
+                      <div class="detail-key">Total Hasil</div><div class="detail-val">{{ formatNumber(selectedHarvest.harvest_quantity, 2) }} {{ selectedHarvest.harvest_unit || 'kg' }}</div>
+                      <div class="detail-key">Luas Lahan</div><div class="detail-val">{{ selectedHarvest.land_area ? `${formatNumber(selectedHarvest.land_area, 2)} m²` : '-' }}</div>
+                      <div class="detail-key">Ketinggian</div>
+                      <div class="detail-val">
+                        <span v-if="selectedHarvest.altitude_mdpl !== null && selectedHarvest.altitude_mdpl !== undefined">
+                          {{ formatNumber(selectedHarvest.altitude_mdpl, 0) }} mdpl ({{ altitudeZone(selectedHarvest.altitude_mdpl) }})
+                        </span>
+                        <span v-else>-</span>
+                      </div>
+                    </div>
+                  </q-card-section>
+                </q-card>
               </div>
               <div class="col-12 col-md-6">
-                <div><b>Lokasi:</b> {{ selectedHarvest.location || '-' }}</div>
-                <div><b>Populasi Demo Plot:</b> {{ selectedHarvest.demo_plot?.population ? `${formatNumber(selectedHarvest.demo_plot.population, 0)} pohon` : '-' }}</div>
-                <div><b>Total Pieces:</b> {{ selectedHarvest.total_pieces ? formatNumber(selectedHarvest.total_pieces, 0) : '-' }}</div>
-                <div><b>Hasil per Pieces:</b> {{ selectedHarvest.per_piece_quantity ? `${formatNumber(selectedHarvest.per_piece_quantity, 4)} ${selectedHarvest.harvest_unit || 'kg'}` : '-' }}</div>
-                <div><b>Mode Panen:</b> {{ selectedHarvest.is_multiple_harvest ? 'Beberapa Kali Panen' : 'Sekali Panen' }}</div>
-                <div><b>Penginput:</b> {{ selectedHarvest.created_by?.name || '-' }}</div>
-                <div><b>Waktu Input:</b> {{ formatDateTime(selectedHarvest.created_datetime) }}</div>
+                <q-card flat bordered>
+                  <q-card-section>
+                    <div class="text-subtitle2 text-weight-medium q-mb-sm">Data Tambahan</div>
+                    <div class="detail-grid">
+                      <div class="detail-key">Lokasi</div><div class="detail-val">{{ selectedHarvest.location || '-' }}</div>
+                      <div class="detail-key">Populasi Demo Plot</div><div class="detail-val">{{ selectedHarvest.demo_plot?.population ? `${formatNumber(selectedHarvest.demo_plot.population, 0)} pohon` : '-' }}</div>
+                      <div class="detail-key">Total PCS</div><div class="detail-val">{{ selectedHarvest.total_pieces ? formatNumber(selectedHarvest.total_pieces, 0) : '-' }}</div>
+                      <div class="detail-key">Hasil per PCS</div><div class="detail-val">{{ selectedHarvest.per_piece_quantity ? `${formatNumber(selectedHarvest.per_piece_quantity, 4)} ${selectedHarvest.harvest_unit || 'kg'}` : '-' }}</div>
+                      <div class="detail-key">Mode Panen</div><div class="detail-val">{{ selectedHarvest.is_multiple_harvest ? 'Beberapa Kali Panen' : 'Sekali Panen' }}</div>
+                      <div class="detail-key">Penginput</div><div class="detail-val">{{ selectedHarvest.created_by?.name || '-' }}</div>
+                      <div class="detail-key">Waktu Input</div><div class="detail-val">{{ formatDateTime(selectedHarvest.created_datetime) }}</div>
+                    </div>
+                  </q-card-section>
+                </q-card>
               </div>
 
               <div
@@ -902,8 +1037,14 @@ const isBs = page.props.auth?.user?.role === "bs";
   width: 100%;
 }
 
+.harvest-thumb {
+  max-height: 180px;
+  object-fit: cover;
+}
+
 .harvest-no-thumb {
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 16 / 9;
+  min-height: 160px;
 }
 
 .harvest-tag-row {
@@ -989,9 +1130,74 @@ const isBs = page.props.auth?.user?.role === "bs";
   border-color: #dce8f3;
 }
 
+.harvest-detail-card {
+  width: min(1120px, 96vw);
+  max-width: 1120px;
+  border-radius: 14px;
+}
+
+.detail-summary-shell {
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+  border-color: #dbe7f3;
+}
+
+.detail-metric-card {
+  border: 1px solid #e3ebf4;
+  border-radius: 10px;
+  padding: 10px;
+  background: #fff;
+  height: 100%;
+}
+
+.detail-metric-label {
+  font-size: 11px;
+  color: #70849a;
+}
+
+.detail-metric-value {
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #1f3f60;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 8px 10px;
+}
+
+.detail-key {
+  font-size: 12px;
+  color: #66798e;
+}
+
+.detail-val {
+  font-size: 13px;
+  font-weight: 600;
+  color: #223c57;
+  word-break: break-word;
+}
+
 @media (max-width: 640px) {
   .harvest-gallery-grid {
     grid-template-columns: 1fr;
+  }
+
+  .harvest-thumb {
+    max-height: 160px;
+  }
+
+  .detail-grid {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .detail-key {
+    margin-top: 6px;
+    font-weight: 700;
   }
 }
 
