@@ -41,6 +41,8 @@ const harvestFilter = reactive({
 
 const harvestItems = ref([]);
 const harvestLoading = ref(false);
+const harvestDetailDialog = ref(false);
+const selectedHarvest = ref(null);
 
 async function fetchProducts() {
   loading.value = true;
@@ -294,6 +296,11 @@ function exportHarvestDetailCsv() {
 
   downloadCsv("detail-hasil-panen.csv", rows);
   $q.notify({ type: "positive", message: "Detail hasil panen berhasil diexport.", position: "top" });
+}
+
+function openHarvestDetail(item) {
+  selectedHarvest.value = item;
+  harvestDetailDialog.value = true;
 }
 
 onMounted(async () => {
@@ -592,6 +599,60 @@ const isBs = page.props.auth?.user?.role === "bs";
           </q-card-section>
         </q-card>
 
+        <q-card flat bordered class="q-mb-md">
+          <q-card-section>
+            <div class="row items-center justify-between q-col-gutter-sm">
+              <div class="col-12 col-md-auto">
+                <div class="text-subtitle1 text-weight-medium">Detail Input BS</div>
+                <div class="text-caption text-grey-7 q-mt-xs">
+                  Menampilkan data detail sesuai yang diinput oleh BS.
+                </div>
+              </div>
+            </div>
+
+            <q-markup-table flat bordered dense class="q-mt-sm">
+              <thead>
+                <tr>
+                  <th class="text-left">Tanggal</th>
+                  <th class="text-left">Varietas</th>
+                  <th class="text-left">Petani</th>
+                  <th class="text-right">Panen</th>
+                  <th class="text-right">Lahan</th>
+                  <th class="text-left">Zona</th>
+                  <th class="text-left">Penginput</th>
+                  <th class="text-right">Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in harvestItems" :key="`detail-row-${item.id}`">
+                  <td>{{ formatDate(item.harvest_date) }}</td>
+                  <td>{{ item.product?.name || '-' }}</td>
+                  <td>{{ item.farmer_name || '-' }}</td>
+                  <td class="text-right">{{ formatNumber(item.harvest_quantity, 2) }} {{ item.harvest_unit || 'kg' }}</td>
+                  <td class="text-right">{{ item.land_area ? `${formatNumber(item.land_area, 2)} m²` : '-' }}</td>
+                  <td>
+                    <span v-if="item.altitude_mdpl !== null && item.altitude_mdpl !== undefined">
+                      {{ altitudeZone(item.altitude_mdpl) }}
+                    </span>
+                    <span v-else>-</span>
+                  </td>
+                  <td>{{ item.created_by?.name || '-' }}</td>
+                  <td class="text-right">
+                    <q-btn
+                      dense
+                      flat
+                      color="primary"
+                      icon="visibility"
+                      label="Detail"
+                      @click="openHarvestDetail(item)"
+                    />
+                  </td>
+                </tr>
+              </tbody>
+            </q-markup-table>
+          </q-card-section>
+        </q-card>
+
         <div class="row q-col-gutter-sm">
           <div v-for="item in harvestItems" :key="item.id" class="col-12 col-md-6 col-lg-4">
           <q-card flat bordered class="harvest-card">
@@ -665,6 +726,76 @@ const isBs = page.props.auth?.user?.role === "bs";
         </div>
       </div>
       </div>
+
+      <q-dialog v-model="harvestDetailDialog" maximized>
+        <q-card>
+          <q-card-section class="row items-center q-pb-none">
+            <div class="text-h6">Detail Input Hasil Panen BS</div>
+            <q-space />
+            <q-btn icon="close" flat round dense v-close-popup />
+          </q-card-section>
+
+          <q-card-section v-if="selectedHarvest" class="q-pt-sm">
+            <div class="row q-col-gutter-md">
+              <div class="col-12 col-md-6">
+                <div><b>Varietas:</b> {{ selectedHarvest.product?.name || '-' }}</div>
+                <div><b>Nama Petani:</b> {{ selectedHarvest.farmer_name || '-' }}</div>
+                <div><b>Tanggal Panen:</b> {{ formatDate(selectedHarvest.harvest_date) }}</div>
+                <div><b>Umur Panen:</b> {{ selectedHarvest.harvest_age_days ? `${selectedHarvest.harvest_age_days} hari` : '-' }}</div>
+                <div><b>Total Hasil:</b> {{ formatNumber(selectedHarvest.harvest_quantity, 2) }} {{ selectedHarvest.harvest_unit || 'kg' }}</div>
+                <div><b>Luas Lahan:</b> {{ selectedHarvest.land_area ? `${formatNumber(selectedHarvest.land_area, 2)} m²` : '-' }}</div>
+                <div><b>Ketinggian:</b>
+                  <span v-if="selectedHarvest.altitude_mdpl !== null && selectedHarvest.altitude_mdpl !== undefined">
+                    {{ formatNumber(selectedHarvest.altitude_mdpl, 0) }} mdpl ({{ altitudeZone(selectedHarvest.altitude_mdpl) }})
+                  </span>
+                  <span v-else>-</span>
+                </div>
+              </div>
+              <div class="col-12 col-md-6">
+                <div><b>Lokasi:</b> {{ selectedHarvest.location || '-' }}</div>
+                <div><b>Populasi Demo Plot:</b> {{ selectedHarvest.demo_plot?.population ? `${formatNumber(selectedHarvest.demo_plot.population, 0)} pohon` : '-' }}</div>
+                <div><b>Total Pieces:</b> {{ selectedHarvest.total_pieces ? formatNumber(selectedHarvest.total_pieces, 0) : '-' }}</div>
+                <div><b>Hasil per Pieces:</b> {{ selectedHarvest.per_piece_quantity ? `${formatNumber(selectedHarvest.per_piece_quantity, 4)} ${selectedHarvest.harvest_unit || 'kg'}` : '-' }}</div>
+                <div><b>Mode Panen:</b> {{ selectedHarvest.is_multiple_harvest ? 'Beberapa Kali Panen' : 'Sekali Panen' }}</div>
+                <div><b>Penginput:</b> {{ selectedHarvest.created_by?.name || '-' }}</div>
+                <div><b>Waktu Input:</b> {{ formatDateTime(selectedHarvest.created_datetime) }}</div>
+              </div>
+
+              <div
+                class="col-12"
+                v-if="selectedHarvest.is_multiple_harvest && selectedHarvest.harvest_cycles && selectedHarvest.harvest_cycles.length"
+              >
+                <q-card flat bordered>
+                  <q-card-section>
+                    <div class="text-subtitle2 text-weight-medium">Rincian Panen Bertahap</div>
+                    <div class="column q-gutter-xs q-mt-sm">
+                      <div
+                        v-for="(cycle, idx) in selectedHarvest.harvest_cycles"
+                        :key="`dlg-cycle-${idx}`"
+                        class="text-body2 bg-grey-1 q-px-sm q-py-xs rounded-borders"
+                      >
+                        <b>{{ cycle.label || `K${idx + 1}` }}</b>
+                        - {{ formatNumber(cycle.quantity, 2) }} {{ selectedHarvest.harvest_unit || 'kg' }}
+                        <span v-if="cycle.date"> | {{ formatDate(cycle.date) }}</span>
+                      </div>
+                    </div>
+                  </q-card-section>
+                </q-card>
+              </div>
+
+              <div class="col-12" v-if="selectedHarvest.strengths || selectedHarvest.weaknesses || selectedHarvest.notes">
+                <q-card flat bordered>
+                  <q-card-section>
+                    <div v-if="selectedHarvest.strengths" class="q-mb-sm"><b>Kekuatan:</b> {{ selectedHarvest.strengths }}</div>
+                    <div v-if="selectedHarvest.weaknesses" class="q-mb-sm"><b>Kelemahan:</b> {{ selectedHarvest.weaknesses }}</div>
+                    <div v-if="selectedHarvest.notes"><b>Catatan:</b> {{ selectedHarvest.notes }}</div>
+                  </q-card-section>
+                </q-card>
+              </div>
+            </div>
+          </q-card-section>
+        </q-card>
+      </q-dialog>
     </div>
   </AuthenticatedLayout>
 </template>
