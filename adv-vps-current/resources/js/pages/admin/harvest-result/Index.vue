@@ -163,7 +163,7 @@
                   <div v-if="errors.harvest_cycles" class="text-negative text-caption q-mb-sm">
                     {{ firstError(errors.harvest_cycles) }}
                   </div>
-                  <div class="column q-gutter-sm">
+                  <div class="column q-gutter-sm cycle-list">
                     <q-card
                       v-for="(cycle, index) in form.harvest_cycles"
                       :key="index"
@@ -172,14 +172,14 @@
                       class="cycle-card"
                     >
                       <q-card-section class="q-pa-sm">
-                        <div class="row q-col-gutter-sm items-center">
-                          <div class="col-12 col-md-2">
+                        <div class="cycle-grid">
+                          <div class="cycle-field cycle-label">
                             <q-input v-model="cycle.label" dense outlined :label="`Label ${index + 1}`" />
                           </div>
-                          <div class="col-12 col-md-3">
+                          <div class="cycle-field cycle-date">
                             <q-input v-model="cycle.date" type="date" dense outlined label="Tanggal Panen" />
                           </div>
-                          <div class="col-12 col-md-3">
+                          <div class="cycle-field cycle-qty">
                             <q-input
                               v-model.number="cycle.quantity"
                               type="number"
@@ -190,7 +190,7 @@
                               step="0.01"
                             />
                           </div>
-                          <div class="col-12 col-md-4 text-right">
+                          <div class="cycle-field cycle-action">
                             <q-btn
                               flat
                               round
@@ -573,6 +573,26 @@ async function submitHarvest() {
   background: #fbfdff;
 }
 
+.cycle-list {
+  width: 100%;
+}
+
+.cycle-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  align-items: end;
+}
+
+.cycle-field {
+  min-width: 0;
+}
+
+.cycle-action {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .harvest-layout {
   width: 100%;
   margin: 0;
@@ -620,6 +640,11 @@ async function submitHarvest() {
 
   .form-grid :deep(.q-field--outlined .q-field__control) {
     border-radius: 10px;
+  }
+
+  .cycle-grid {
+    grid-template-columns: 140px minmax(260px, 1fr) minmax(220px, 1fr) 56px;
+    gap: 12px;
   }
 
   .summary-card .q-list {
