@@ -244,9 +244,12 @@ function getPerTreeYield(item) {
 
 function getPhotoUrl(item) {
   const urls = getPhotoUrls(item);
+  console.log('[DEBUG] Photo URLs for item', item?.id, ':', urls);
   if (urls.length > 0) {
+    console.log('[DEBUG] Using first URL:', urls[0]);
     return urls[0];
   }
+  console.log('[DEBUG] No photo URLs found for item', item?.id);
   return null;
 }
 
@@ -999,13 +1002,11 @@ const isBs = page.props.auth?.user?.role === "bs";
                     </div>
 
                     <div class="harvest-tag-row compact">
-                      <span class="harvest-tag zone-tag">
-                        <span class="gt-xs">{{ item.altitude_mdpl !== null && item.altitude_mdpl !== undefined ? altitudeZone(item.altitude_mdpl) : 'Zona -' }}</span>
-                        <span class="lt-sm">{{ item.altitude_mdpl !== null && item.altitude_mdpl !== undefined ? altitudeZoneShort(item.altitude_mdpl) : '-' }}</span>
+                      <span class="harvest-tag zone-tag" :title="item.altitude_mdpl !== null && item.altitude_mdpl !== undefined ? altitudeZone(item.altitude_mdpl) + ' (' + item.altitude_mdpl + ' mdpl)' : ''">
+                        {{ item.altitude_mdpl !== null && item.altitude_mdpl !== undefined ? altitudeZone(item.altitude_mdpl) : 'Zona -' }}
                       </span>
-                      <span v-if="item.is_multiple_harvest" class="harvest-tag cycle-tag">
-                        <span class="gt-xs">Multi Panen</span>
-                        <span class="lt-sm">Multi</span>
+                      <span v-if="item.is_multiple_harvest" class="harvest-tag cycle-tag" title="Beberapa Kali Panen">
+                        Multi Panen
                       </span>
                     </div>
                   </div>
@@ -2011,12 +2012,23 @@ const isBs = page.props.auth?.user?.role === "bs";
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+  align-items: flex-start;
 }
 
 .harvest-tag-row.compact {
   top: 6px;
   left: 6px;
   right: 6px;
+  gap: 4px;
+}
+
+@media (max-width: 480px) {
+  .harvest-tag-row.compact {
+    top: 4px;
+    left: 4px;
+    right: 4px;
+    gap: 3px;
+  }
 }
 
 .harvest-tag {
@@ -2028,20 +2040,34 @@ const isBs = page.props.auth?.user?.role === "bs";
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 100%;
+  max-width: fit-content;
   display: inline-block;
 }
 
 .zone-tag {
   background: rgba(27, 74, 130, 0.84);
-  max-width: 120px;
+  max-width: 140px;
 }
 
-@media (max-width: 600px) {
-  .zone-tag {
-    max-width: 90px;
+@media (max-width: 768px) {
+  .harvest-tag {
     font-size: 10px;
-    padding: 3px 7px;
+    padding: 3px 8px;
+  }
+  
+  .zone-tag {
+    max-width: 110px;
+  }
+}
+
+@media (max-width: 480px) {
+  .harvest-tag {
+    font-size: 9px;
+    padding: 2px 6px;
+  }
+  
+  .zone-tag {
+    max-width: 85px;
   }
 }
 
