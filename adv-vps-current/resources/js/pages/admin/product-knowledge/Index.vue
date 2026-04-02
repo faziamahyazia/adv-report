@@ -256,15 +256,22 @@ function getPhotoUrls(item) {
     .map((url) => String(url || "").trim())
     .filter(Boolean)
     .map((url) => {
+      // If it's already a relative path starting with /, use it directly
+      if (url.startsWith('/') && !url.startsWith('//')) {
+        return url;
+      }
+      // Handle full URLs
       if (url.startsWith("http://") || url.startsWith("https://")) {
         try {
           const parsed = new URL(url);
           return `${parsed.pathname}${parsed.search}`;
         } catch (error) {
+          console.warn('Failed to parse photo URL:', url, error);
           return url;
         }
       }
-      return url;
+      // Handle relative paths without leading slash
+      return `/${url}`;
     });
 
   if (urls.length > 0) {
@@ -326,6 +333,20 @@ function altitudeZone(value) {
     return "Middleland";
   }
   return "Highland";
+}
+
+function altitudeZoneShort(value) {
+  const altitude = Number(value);
+  if (!Number.isFinite(altitude) || altitude < 0) {
+    return "-";
+  }
+  if (altitude <= 400) {
+    return "Low";
+  }
+  if (altitude <= 700) {
+    return "Mid";
+  }
+  return "High";
 }
 
 function toZoneKey(value) {
@@ -979,9 +1000,13 @@ const isBs = page.props.auth?.user?.role === "bs";
 
                     <div class="harvest-tag-row compact">
                       <span class="harvest-tag zone-tag">
-                        {{ item.altitude_mdpl !== null && item.altitude_mdpl !== undefined ? altitudeZone(item.altitude_mdpl) : 'Zona -' }}
+                        <span class="gt-xs">{{ item.altitude_mdpl !== null && item.altitude_mdpl !== undefined ? altitudeZone(item.altitude_mdpl) : 'Zona -' }}</span>
+                        <span class="lt-sm">{{ item.altitude_mdpl !== null && item.altitude_mdpl !== undefined ? altitudeZoneShort(item.altitude_mdpl) : '-' }}</span>
                       </span>
-                      <span v-if="item.is_multiple_harvest" class="harvest-tag cycle-tag">Multi Panen</span>
+                      <span v-if="item.is_multiple_harvest" class="harvest-tag cycle-tag">
+                        <span class="gt-xs">Multi Panen</span>
+                        <span class="lt-sm">Multi</span>
+                      </span>
                     </div>
                   </div>
 
@@ -2000,10 +2025,24 @@ const isBs = page.props.auth?.user?.role === "bs";
   border-radius: 999px;
   padding: 4px 9px;
   color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  display: inline-block;
 }
 
 .zone-tag {
   background: rgba(27, 74, 130, 0.84);
+  max-width: 120px;
+}
+
+@media (max-width: 600px) {
+  .zone-tag {
+    max-width: 90px;
+    font-size: 10px;
+    padding: 3px 7px;
+  }
 }
 
 .cycle-tag {
