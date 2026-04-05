@@ -59,15 +59,21 @@ const selectedProduct = computed(() => {
   return products.find((item) => Number(item.value) === Number(form.product_id || 0));
 });
 
-const seedsPerTree = computed(() => Number(selectedProduct.value?.seeds_per_tree || 0));
+// Use jumlah_biji_per_pcs (existing field) instead of seeds_per_tree
+const seedsPerPcs = computed(() => Number(selectedProduct.value?.jumlah_biji_per_pcs || 0));
 
 // Calculation for jumlah_tanam with germination
 const totalSeeds = computed(() => {
-  const tanam = Number(form.jumlah_tanam || 0);
-  if (tanam <= 0 || seedsPerTree.value <= 0) {
+  const tanamRaw = form.jumlah_tanam;
+  // Handle both number and string (from LocaleNumberInput)
+  const tanam = typeof tanamRaw === 'string' 
+    ? Number(tanamRaw.replace(/\D/g, '')) 
+    : Number(tanamRaw || 0);
+    
+  if (tanam <= 0 || seedsPerPcs.value <= 0) {
     return 0;
   }
-  return tanam * seedsPerTree.value;
+  return tanam * seedsPerPcs.value;
 });
 
 const estimatedPopulationFromGermination = computed(() => {
@@ -83,10 +89,17 @@ const estimatedPopulationFromGermination = computed(() => {
 watch(
   [() => form.jumlah_tanam, () => form.db_germinasi, () => form.product_id],
   () => {
-    if (form.jumlah_tanam && form.db_germinasi) {
+    const tanamRaw = form.jumlah_tanam;
+    const tanam = typeof tanamRaw === 'string' 
+      ? Number(tanamRaw.replace(/\D/g, '')) 
+      : Number(tanamRaw || 0);
+    const germinasi = Number(form.db_germinasi || 0);
+    
+    if (tanam > 0 && germinasi > 0 && seedsPerPcs.value > 0) {
       form.population = estimatedPopulationFromGermination.value;
     }
-  }
+  },
+  { immediate: true } // Trigger on mount
 );
 
 const submit = () =>
@@ -290,8 +303,14 @@ function removeLocation() {
               >
                 <div class="text-caption">
                   <b>Perhitungan Otomatis:</b><br>
-                  Jumlah tanam: {{ form.jumlah_tanam }} pcs × {{ seedsPerTree || 0 }} biji/pcs = <b>{{ totalSeeds }}</b> biji<br>
-                  Germinasi {{ form.db_germinasi }}%: {{ totalSeeds }} × {{ form.db_germinasi }}% = <b>{{ estimatedPopulationFromGermination }}</b> pohon
+                  <span v-if="seedsPerPcs > 0">
+                    Jumlah tanam: {{ form.jumlah_tanam }} pcs × {{ seedsPerPcs }} biji/pcs = <b>{{ totalSeeds }}</b> biji<br>
+                    Germinasi {{ form.db_germinasi }}%: {{ totalSeeds }} × {{ form.db_germinasi }}% = <b>{{ estimatedPopulationFromGermination }}</b> pohon
+                  </span>
+                  <span v-else class="text-negative">
+                    ⚠️ Jumlah biji per pcs belum diisi di master product "{{ selectedProduct?.label }}".<br>
+                    Silakan isi field "Jumlah Biji Per PCS" di menu Products terlebih dahulu.
+                  </span>
                 </div>
               </q-banner>
               
