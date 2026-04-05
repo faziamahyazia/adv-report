@@ -120,6 +120,8 @@ class DemoPlotController extends Controller
             'field_location'   => 'nullable|string|max:100',
             'population_pcs'   => 'required|numeric|gt:0',
             'population'       => 'nullable|numeric|gt:0',
+            'jumlah_tanam'     => 'nullable|numeric|gte:0',
+            'db_germinasi'     => 'nullable|numeric|gte:0|lte:100',
             'latlong'          => 'nullable|string|max:100',
             'image'            => 'nullable|image|max:5120',
             'image_path'       => 'nullable|string',
