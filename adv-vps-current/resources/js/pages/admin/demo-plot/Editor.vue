@@ -33,7 +33,6 @@ const existingSeedPerPcs = Number(
   page.props.products.find((p) => Number(p.id) === Number(page.props.data.product_id))
     ?.jumlah_biji_per_pcs || 0
 );
-const estimatedPcs = existingSeedPerPcs > 0 ? Math.ceil(existingPopulation / existingSeedPerPcs) : null;
 
 const form = useForm({
   id: page.props.data.id,
@@ -46,7 +45,6 @@ const form = useForm({
   field_location: page.props.data.field_location,
   jumlah_tanam: page.props.data.jumlah_tanam || null,
   db_germinasi: page.props.data.db_germinasi || null,
-  population_pcs: estimatedPcs,
   population: page.props.data.population,
   plant_date: dayjs(page.props.data.plant_date).format("YYYY-MM-DD"),
   // plant_status: page.props.data.plant_status,
@@ -61,18 +59,9 @@ const selectedProduct = computed(() => {
   return products.find((item) => Number(item.value) === Number(form.product_id || 0));
 });
 
-const seedPerPcs = computed(() => Number(selectedProduct.value?.jumlah_biji_per_pcs || 0));
 const seedsPerTree = computed(() => Number(selectedProduct.value?.seeds_per_tree || 0));
 
-const estimatedPopulation = computed(() => {
-  const pcs = Number(form.population_pcs || 0);
-  if (pcs <= 0 || seedPerPcs.value <= 0) {
-    return 0;
-  }
-  return pcs * seedPerPcs.value;
-});
-
-// New calculation for jumlah_tanam with germination
+// Calculation for jumlah_tanam with germination
 const totalSeeds = computed(() => {
   const tanam = Number(form.jumlah_tanam || 0);
   if (tanam <= 0 || seedsPerTree.value <= 0) {
@@ -89,20 +78,6 @@ const estimatedPopulationFromGermination = computed(() => {
   }
   return Math.round(seeds * (germinasi / 100));
 });
-
-watch(
-  () => form.population_pcs,
-  () => {
-    form.population = estimatedPopulation.value;
-  }
-);
-
-watch(
-  () => form.product_id,
-  () => {
-    form.population = estimatedPopulation.value;
-  }
-);
 
 // Watch for jumlah_tanam and db_germinasi changes
 watch(
@@ -264,9 +239,9 @@ function removeLocation() {
                 hide-bottom-space
               />
               
-              <!-- New Fields: Jumlah Tanam & DB Germinasi -->
+              <!-- Jumlah Tanam & DB Germinasi -->
               <div class="q-mt-md text-subtitle2 text-bold text-grey-9">
-                Metode Perhitungan Populasi
+                Perhitungan Populasi
               </div>
               <q-separator class="q-mb-md" />
               
@@ -278,6 +253,13 @@ function removeLocation() {
                 :disable="form.processing"
                 :error="!!form.errors.jumlah_tanam"
                 :error-message="form.errors.jumlah_tanam"
+                :rules="[
+                  (val) => !!val || 'Jumlah tanam harus diisi.',
+                  (val) => {
+                    const number = parseInt(String(val).replace(/\D/g, ''), 10);
+                    return number > 0 || 'Jumlah tanam harus lebih dari 0.';
+                  },
+                ]"
                 hint="Masukkan jumlah yang ditanam dalam satuan pcs"
                 hide-bottom-space
               />
@@ -294,6 +276,7 @@ function removeLocation() {
                 :error="!!form.errors.db_germinasi"
                 :error-message="form.errors.db_germinasi"
                 :rules="[
+                  (val) => val !== null && val !== '' || 'DB Germinasi harus diisi.',
                   (val) => val === null || val === '' || (val >= 0 && val <= 100) || 'Germinasi harus antara 0-100%',
                 ]"
                 hint="Persentase germinasi (0-100%)"
@@ -312,43 +295,12 @@ function removeLocation() {
                 </div>
               </q-banner>
               
-              <div class="q-mt-md text-caption text-grey-7">
-                <i>Atau gunakan metode lama (opsional):</i>
-              </div>
-              
-              <LocaleNumberInput
-                v-model.trim="form.population_pcs"
-                type="text"
-                label="Jumlah Tanam (pcs) - Metode Lama"
-                lazy-rules
-                :disable="form.processing"
-                :error="!!form.errors.population_pcs"
-                :error-message="form.errors.population_pcs"
-                hint="Metode lama tanpa perhitungan germinasi"
-                hide-bottom-space
-              />
-              <q-banner
-                rounded
-                class="bg-blue-1 text-blue-9 q-mt-sm"
-                v-if="form.product_id && form.population_pcs && !form.jumlah_tanam"
-              >
-                <div class="text-caption">
-                  Konversi otomatis: 1 pcs = <b>{{ seedPerPcs || 0 }}</b> biji.
-                  <span v-if="seedPerPcs > 0">
-                    Estimasi populasi: <b>{{ estimatedPopulation }}</b> pohon.
-                  </span>
-                </div>
-              </q-banner>
               <q-input
                 class="q-mt-sm"
                 outlined
                 dense
                 disable
-                :model-value="
-                  form.jumlah_tanam && form.db_germinasi 
-                    ? estimatedPopulationFromGermination 
-                    : (estimatedPopulation > 0 ? estimatedPopulation : '-')
-                "
+                :model-value="estimatedPopulationFromGermination > 0 ? estimatedPopulationFromGermination : '-'"
                 label="Estimasi Populasi (pohon)"
                 hint="Otomatis terisi berdasarkan perhitungan di atas"
               />

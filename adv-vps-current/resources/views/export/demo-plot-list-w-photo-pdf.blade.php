@@ -15,17 +15,24 @@
       @forelse ($items as $index => $item)
         @php
           $src = null;
-          foreach ([$item->latest_image_path ?? null, $item->image_path ?? null] as $path) {
-            if (!$path) {
-              continue;
-            }
-
-            $imagePath = public_path($path);
-            if (file_exists($imagePath)) {
-                  $imageData = base64_encode(file_get_contents($imagePath));
-                  $src = 'data:image/png;base64,' . $imageData;
-              break;
+          try {
+            foreach ([$item->latest_image_path ?? null, $item->image_path ?? null] as $path) {
+              if (!$path) {
+                continue;
               }
+
+              $imagePath = public_path($path);
+              if (file_exists($imagePath) && is_readable($imagePath)) {
+                $imageData = @file_get_contents($imagePath);
+                if ($imageData !== false) {
+                  $src = 'data:image/png;base64,' . base64_encode($imageData);
+                  break;
+                }
+              }
+            }
+          } catch (\Exception $e) {
+            // Skip jika error membaca gambar
+            $src = null;
           }
 
         @endphp
