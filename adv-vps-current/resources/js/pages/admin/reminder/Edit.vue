@@ -194,9 +194,9 @@ const insertTagToActiveTemplate = (tag) => {
                   v-if="form.activity_notification_enabled"
                   v-model="form.activity_notification_template"
                   type="textarea"
+                  autogrow
                   outlined
                   dense
-                  rows="3"
                   label="Template Realisasi"
                   class="q-mt-sm"
                   @focus="setActiveTemplateField('activity_notification_template')"
@@ -239,9 +239,9 @@ const insertTagToActiveTemplate = (tag) => {
                   v-if="form.weekly_reminder_enabled"
                   v-model="form.weekly_reminder_template"
                   type="textarea"
+                  autogrow
                   outlined
                   dense
-                  rows="3"
                   label="Template Pesan"
                   @focus="setActiveTemplateField('weekly_reminder_template')"
                   :error="!!form.errors.weekly_reminder_template"
@@ -320,9 +320,9 @@ const insertTagToActiveTemplate = (tag) => {
                   <q-input
                     v-model="form[reminder.templateField]"
                     type="textarea"
+                    autogrow
                     outlined
                     dense
-                    rows="3"
                     label="Template Pesan"
                     @focus="setActiveTemplateField(reminder.templateField)"
                     :error="!!form.errors[reminder.templateField]"
