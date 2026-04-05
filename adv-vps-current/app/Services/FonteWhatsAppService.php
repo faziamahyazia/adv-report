@@ -303,17 +303,23 @@ class FonteWhatsAppService
         return $this->sendMessage($bsPhone, implode("\n", $lines));
     }
 
-    public function sendWeeklyReminderToAllBs(): array
+    public function sendWeeklyReminderToAllBs(bool $force = false): array
     {
+        if (!$force && !filter_var(Setting::value('wa_weekly_reminder_enabled', '1'), FILTER_VALIDATE_BOOLEAN)) {
+            return ['total_bs' => 0, 'sent' => 0, 'skipped' => 0];
+        }
+
         $targets = User::query()
+            ->with('parent:id,name,username,whatsapp_number')
             ->where('role', User::Role_BS)
             ->where('active', true)
             ->orderBy('name')
-            ->get(['id', 'name', 'username', 'whatsapp_number']);
+            ->get(['id', 'name', 'username', 'whatsapp_number', 'parent_id']);
 
-        $message = "📌 Reminder Update Data\n"
-            . "Halo tim BS, mohon update data aktivitas dan penjualan minggu ini di aplikasi Advanta Report.\n"
-            . "Terima kasih 🙏";
+        $template = (string) Setting::value(
+            'wa_weekly_reminder_template',
+            "📌 Reminder Update Data\nHalo {bs_name}, mohon update data aktivitas dan penjualan minggu ini di aplikasi Advanta Report.\nTerima kasih 🙏"
+        );
 
         $result = [
             'total_bs' => $targets->count(),
@@ -332,6 +338,14 @@ class FonteWhatsAppService
                 continue;
             }
 
+            $message = $this->renderTemplate($template, [
+                'bs_name' => $user->name ?? '-',
+                'agronomist_name' => $user->parent?->name ?? '-',
+                'day_name' => 'Jumat',
+                'time' => config('services.fonte.bs_weekly_reminder_time', '08:00'),
+                'company_name' => Setting::value('company_name', 'My Company'),
+            ]);
+
             if ($this->sendMessage($phone, $message)) {
                 $result['sent']++;
             } else {
@@ -340,6 +354,11 @@ class FonteWhatsAppService
         }
 
         return $result;
+    }
+
+    public function triggerWeeklyReminderToAllBs(): array
+    {
+        return $this->sendWeeklyReminderToAllBs(true);
     }
 
     public function sendMonthlyPlanReminderToBs(?User $scopeUser = null, bool $force = false): array
@@ -535,6 +554,12 @@ class FonteWhatsAppService
         $replacements = [];
         foreach ($data as $key => $value) {
             $replacements['{' . $key . '}'] = (string) $value;
+
+            // Support placeholder variant with dashes, e.g. {bs-name}.
+            $dashKey = str_replace('_', '-', (string) $key);
+            if ($dashKey !== $key) {
+                $replacements['{' . $dashKey . '}'] = (string) $value;
+            }
         }
 
         return strtr($template, $replacements);

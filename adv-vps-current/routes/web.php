@@ -126,6 +126,9 @@ Route::middleware([Auth::class])->group(function () {
                 Route::get('', [HarvestResultController::class, 'index'])->name('admin.harvest-result.index');
                 Route::post('', [HarvestResultController::class, 'store'])->name('admin.harvest-result.store');
                 Route::post('update/{id}', [HarvestResultController::class, 'update'])->name('admin.harvest-result.update');
+                Route::get('export-pdf/{id}', [HarvestResultController::class, 'exportPdf'])->name('admin.harvest-result.export-pdf');
+                Route::post('delete-photo/{id}/{photoId}', [HarvestResultController::class, 'deletePhoto'])->name('admin.harvest-result.photo.delete');
+                Route::post('delete-legacy-photo/{id}', [HarvestResultController::class, 'deleteLegacyPhoto'])->name('admin.harvest-result.photo.delete-legacy');
                 Route::post('delete/{id}', [HarvestResultController::class, 'delete'])->name('admin.harvest-result.delete');
             });
 
@@ -323,6 +326,7 @@ Route::middleware([Auth::class])->group(function () {
 
             Route::get('reminders/wa', [ReminderSettingController::class, 'edit'])->name('admin.reminder.edit');
             Route::post('reminders/wa', [ReminderSettingController::class, 'update'])->name('admin.reminder.update');
+            Route::post('reminders/wa/trigger-weekly', [ReminderSettingController::class, 'triggerWeekly'])->name('admin.reminder.trigger-weekly');
             Route::post('reminders/wa/trigger-plan', [ReminderSettingController::class, 'triggerPlan'])->name('admin.reminder.trigger-plan');
             Route::post('reminders/wa/trigger-report', [ReminderSettingController::class, 'triggerReport'])->name('admin.reminder.trigger-report');
             Route::get('notifications/info', [NotificationController::class, 'index'])->name('admin.notification.index');

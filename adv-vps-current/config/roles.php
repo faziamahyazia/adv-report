@@ -22,6 +22,7 @@ return [
         'admin.harvest-result.index',
         'admin.harvest-result.store',
         'admin.harvest-result.update',
+        'admin.harvest-result.export-pdf',
         'admin.harvest-result.delete',
 
         'admin.demo-plot.index',
@@ -127,6 +128,7 @@ return [
         'admin.product-knowledge.harvest-data',
         'admin.product-knowledge.gallery',
 
+        'admin.harvest-result.export-pdf',
         'admin.harvest-result.update',
         'admin.harvest-result.delete',
 

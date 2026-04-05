@@ -109,19 +109,6 @@
 
                 <div class="col-12 col-md-6 col-xl-3">
                   <q-input
-                    v-model.number="form.land_area"
-                    type="number"
-                    outlined
-                    dense
-                    label="Luas Lahan (m2)"
-                    step="0.01"
-                    min="0"
-                    :error="Boolean(errors.land_area)"
-                    :error-message="firstError(errors.land_area)"
-                  />
-                </div>
-                <div class="col-12 col-md-6 col-xl-3">
-                  <q-input
                     v-model.number="form.altitude_mdpl"
                     type="number"
                     outlined
@@ -157,13 +144,28 @@
                   />
                 </div>
 
+                <div class="col-12 col-md-6 col-xl-3" v-if="isFreshCornSelected">
+                  <q-input
+                    v-model.number="form.putren_quantity"
+                    type="number"
+                    outlined
+                    dense
+                    label="Hasil Putren (kg)"
+                    step="0.01"
+                    min="0"
+                    hint="Khusus produk Fresh Corn"
+                    :error="Boolean(errors.putren_quantity)"
+                    :error-message="firstError(errors.putren_quantity)"
+                  />
+                </div>
+
                 <div class="col-12 col-md-6 col-xl-3">
                   <q-input
                     v-model.number="form.total_pieces"
                     type="number"
                     outlined
                     dense
-                    label="Qty Panen (PCS)"
+                    label="Jumlah yang ditanam (PCS)"
                     min="0"
                     step="1"
                     :error="Boolean(errors.total_pieces)"
@@ -288,8 +290,8 @@
                     use-chips
                     clearable
                     @update:model-value="handlePhotoChange"
-                    :error="Boolean(errors.photos || errors.photo)"
-                    :error-message="firstError(errors.photos || errors.photo)"
+                    :error="Boolean(errors.weakness_photos)"
+                    :error-message="firstError(errors.weakness_photos)"
                   />
                   <div class="text-caption text-grey-7 q-mt-xs">Format JPG/PNG, maksimal 10MB per foto, maksimal 10 foto.</div>
                   <div v-if="photoPreviews.length" class="harvest-photo-grid q-mt-sm">
@@ -344,13 +346,24 @@
                   <q-item-section side>{{ safeNumber(totalHarvestQuantity, 2) }} kg</q-item-section>
                 </q-item>
                 <q-item>
-                  <q-item-section>Qty Panen</q-item-section>
+                  <q-item-section>Jumlah yang ditanam</q-item-section>
                   <q-item-section side>{{ form.total_pieces ? safeNumber(form.total_pieces, 0) : '-' }} PCS</q-item-section>
                 </q-item>
                 <q-item>
                   <q-item-section>Hasil per PCS</q-item-section>
                   <q-item-section side>
                     <span v-if="estimatedPerPieceYield !== null">{{ safeNumber(estimatedPerPieceYield, 4) }} kg/pcs</span>
+                    <span v-else>-</span>
+                  </q-item-section>
+                </q-item>
+                <q-item v-if="isFreshCornSelected">
+                  <q-item-section>Hasil Putren</q-item-section>
+                  <q-item-section side>{{ form.putren_quantity ? `${safeNumber(form.putren_quantity, 2)} kg` : '-' }}</q-item-section>
+                </q-item>
+                <q-item v-if="isFreshCornSelected">
+                  <q-item-section>Putren per PCS</q-item-section>
+                  <q-item-section side>
+                    <span v-if="estimatedPutrenPerPieceYield !== null">{{ safeNumber(estimatedPutrenPerPieceYield, 4) }} kg/pcs</span>
                     <span v-else>-</span>
                   </q-item-section>
                 </q-item>
@@ -373,6 +386,13 @@
                   <q-item-section>Hasil per Pohon Tumbuh</q-item-section>
                   <q-item-section side>
                     <span v-if="productivityPerGrownPlant !== null">{{ safeNumber(productivityPerGrownPlant, 4) }} kg/pohon</span>
+                    <span v-else>-</span>
+                  </q-item-section>
+                </q-item>
+                <q-item v-if="isFreshCornSelected">
+                  <q-item-section>Putren per Pohon</q-item-section>
+                  <q-item-section side>
+                    <span v-if="putrenPerGrownPlant !== null">{{ safeNumber(putrenPerGrownPlant, 4) }} kg/pohon</span>
                     <span v-else>-</span>
                   </q-item-section>
                 </q-item>
@@ -447,6 +467,7 @@ const form = reactive({
   harvest_date: "",
   harvest_age_days: null,
   harvest_quantity: null,
+  putren_quantity: null,
   total_pieces: null,
   germination_percentage: null,
   harvest_unit: "kg",
@@ -487,6 +508,15 @@ const seedsPerPiece = computed(() => {
   return Number(selectedProduct.value?.jumlah_biji_per_pcs || 0);
 });
 
+const isFreshCornSelected = computed(() => {
+  const categoryName = String(selectedProduct.value?.category_name || "").toLowerCase();
+  if (categoryName) {
+    return categoryName.includes("fresh corn");
+  }
+  const name = String(selectedProduct.value?.name || "").toLowerCase();
+  return name.includes("fresh corn");
+});
+
 function firstError(value) {
   if (Array.isArray(value)) {
     return value[0] || "";
@@ -517,6 +547,15 @@ const estimatedPerPieceYield = computed(() => {
   return null;
 });
 
+const estimatedPutrenPerPieceYield = computed(() => {
+  const pieces = Number(form.total_pieces || 0);
+  const putrenQty = Number(form.putren_quantity || 0);
+  if (pieces > 0 && putrenQty > 0) {
+    return putrenQty / pieces;
+  }
+  return null;
+});
+
 const totalSeedCount = computed(() => {
   const pieces = Number(form.total_pieces || 0);
   if (pieces > 0 && seedsPerPiece.value > 0) {
@@ -536,6 +575,14 @@ const estimatedGrownPlants = computed(() => {
 const productivityPerGrownPlant = computed(() => {
   if (estimatedGrownPlants.value && estimatedGrownPlants.value > 0 && totalHarvestQuantity.value > 0) {
     return totalHarvestQuantity.value / estimatedGrownPlants.value;
+  }
+  return null;
+});
+
+const putrenPerGrownPlant = computed(() => {
+  const putrenQty = Number(form.putren_quantity || 0);
+  if (estimatedGrownPlants.value && estimatedGrownPlants.value > 0 && putrenQty > 0) {
+    return putrenQty / estimatedGrownPlants.value;
   }
   return null;
 });
@@ -615,6 +662,12 @@ watch(totalHarvestQuantity, (value) => {
   }
 });
 
+watch(isFreshCornSelected, (isFreshCorn) => {
+  if (!isFreshCorn) {
+    form.putren_quantity = null;
+  }
+});
+
 function addCycle() {
   const nextIndex = form.harvest_cycles.length + 1;
   form.harvest_cycles.push({
@@ -661,6 +714,7 @@ function resetForm() {
   form.harvest_date = "";
   form.harvest_age_days = null;
   form.harvest_quantity = null;
+  form.putren_quantity = null;
   form.total_pieces = null;
   form.germination_percentage = null;
   form.harvest_unit = "kg";
@@ -695,6 +749,7 @@ async function submitHarvest() {
     payload.append("harvest_date", form.harvest_date || "");
     payload.append("harvest_age_days", form.harvest_age_days ?? "");
     payload.append("harvest_quantity", totalHarvestQuantity.value || 0);
+    payload.append("putren_quantity", isFreshCornSelected.value ? (form.putren_quantity ?? "") : "");
     payload.append("total_pieces", form.total_pieces ?? "");
     payload.append("germination_percentage", form.germination_percentage ?? "");
     payload.append("harvest_unit", "kg");
@@ -717,7 +772,7 @@ async function submitHarvest() {
 
     if (selectedFiles.length > 0) {
       selectedFiles.forEach((file) => {
-        payload.append("photos[]", file);
+        payload.append("weakness_photos[]", file);
       });
     }
 

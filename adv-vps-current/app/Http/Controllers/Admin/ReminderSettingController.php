@@ -26,6 +26,8 @@ class ReminderSettingController extends Controller
             'complaint_received_notification_enabled' => true,
             'activity_notification_enabled' => true,
             'activity_notification_template' => "Halo {agronomist_name},\nBS {bs_name} baru input/update realisasi kegiatan.\nTanggal: {activity_date}\nJenis: {activity_type}\nLokasi: {location}\nCatatan: {notes}\nStatus: {status}",
+            'weekly_reminder_enabled' => true,
+            'weekly_reminder_template' => "📌 Reminder Update Data\nHalo {bs_name}, mohon update data aktivitas dan penjualan minggu ini di aplikasi Advanta Report.\nTerima kasih 🙏",
             'plan_reminder_enabled' => true,
             'plan_reminder_day' => 20,
             'plan_reminder_time' => '08:00',
@@ -46,6 +48,8 @@ class ReminderSettingController extends Controller
             'complaint_received_notification_enabled' => filter_var(Setting::value('wa_complaint_received_notification_enabled', $defaults['complaint_received_notification_enabled']), FILTER_VALIDATE_BOOLEAN),
             'activity_notification_enabled' => filter_var(Setting::value('wa_activity_notification_enabled', $defaults['activity_notification_enabled']), FILTER_VALIDATE_BOOLEAN),
             'activity_notification_template' => (string) Setting::value('wa_activity_notification_template', $defaults['activity_notification_template']),
+            'weekly_reminder_enabled' => filter_var(Setting::value('wa_weekly_reminder_enabled', $defaults['weekly_reminder_enabled']), FILTER_VALIDATE_BOOLEAN),
+            'weekly_reminder_template' => (string) Setting::value('wa_weekly_reminder_template', $defaults['weekly_reminder_template']),
             'plan_reminder_enabled' => filter_var(Setting::value('wa_plan_reminder_enabled', $defaults['plan_reminder_enabled']), FILTER_VALIDATE_BOOLEAN),
             'plan_reminder_day' => (int) Setting::value('wa_plan_reminder_day', $defaults['plan_reminder_day']),
             'plan_reminder_time' => (string) Setting::value('wa_plan_reminder_time', $defaults['plan_reminder_time']),
@@ -66,11 +70,14 @@ class ReminderSettingController extends Controller
             'available_tags' => [
                 '{agronomist_name}',
                 '{bs_name}',
+                '{bs-name}',
                 '{activity_date}',
                 '{activity_type}',
                 '{location}',
                 '{notes}',
                 '{status}',
+                '{day_name}',
+                '{time}',
                 '{month_label}',
                 '{day}',
                 '{company_name}',
@@ -87,6 +94,8 @@ class ReminderSettingController extends Controller
             'complaint_received_notification_enabled' => 'required|boolean',
             'activity_notification_enabled' => 'required|boolean',
             'activity_notification_template' => 'required|string|max:2000',
+            'weekly_reminder_enabled' => 'required|boolean',
+            'weekly_reminder_template' => 'required|string|max:2000',
             'plan_reminder_enabled' => 'required|boolean',
             'plan_reminder_day' => 'required|integer|min:1|max:31',
             'plan_reminder_time' => ['required', 'regex:/^([01]\d|2[0-3]):([0-5]\d)$/'],
@@ -101,6 +110,8 @@ class ReminderSettingController extends Controller
         Setting::setValue('wa_complaint_received_notification_enabled', $validated['complaint_received_notification_enabled'] ? '1' : '0');
         Setting::setValue('wa_activity_notification_enabled', $validated['activity_notification_enabled'] ? '1' : '0');
         Setting::setValue('wa_activity_notification_template', $validated['activity_notification_template']);
+        Setting::setValue('wa_weekly_reminder_enabled', $validated['weekly_reminder_enabled'] ? '1' : '0');
+        Setting::setValue('wa_weekly_reminder_template', $validated['weekly_reminder_template']);
         Setting::setValue('wa_plan_reminder_enabled', $validated['plan_reminder_enabled'] ? '1' : '0');
         Setting::setValue('wa_plan_reminder_day', (string) $validated['plan_reminder_day']);
         Setting::setValue('wa_plan_reminder_time', $validated['plan_reminder_time']);
@@ -133,6 +144,18 @@ class ReminderSettingController extends Controller
 
         return response()->json([
             'message' => 'Trigger reminder laporan selesai.',
+            'result' => $result,
+        ]);
+    }
+
+    public function triggerWeekly(FonteWhatsAppService $waService)
+    {
+        $this->ensureAccess();
+
+        $result = $waService->triggerWeeklyReminderToAllBs();
+
+        return response()->json([
+            'message' => 'Trigger reminder Jumat selesai.',
             'result' => $result,
         ]);
     }

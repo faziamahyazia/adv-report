@@ -48,7 +48,25 @@ class ProductKnowledgeController extends Controller
 
         return inertia('admin/product-knowledge/Index', [
             'categories' => ProductCategory::orderBy('name')->get(['id', 'name']),
-            'products' => Product::where('active', true)->orderBy('name')->get(['id', 'name', 'jumlah_biji_per_pcs', 'price_1', 'uom_1', 'price_2', 'uom_2']),
+            'products' => Product::query()
+                ->with('category:id,name')
+                ->where('active', true)
+                ->orderBy('name')
+                ->get(['id', 'name', 'category_id', 'jumlah_biji_per_pcs', 'price_1', 'uom_1', 'price_2', 'uom_2'])
+                ->map(function ($product) {
+                    return [
+                        'id' => $product->id,
+                        'name' => $product->name,
+                        'category_id' => $product->category_id,
+                        'category_name' => $product->category?->name,
+                        'jumlah_biji_per_pcs' => $product->jumlah_biji_per_pcs,
+                        'price_1' => $product->price_1,
+                        'uom_1' => $product->uom_1,
+                        'price_2' => $product->price_2,
+                        'uom_2' => $product->uom_2,
+                    ];
+                })
+                ->values(),
             'demoPlots' => $demoPlots,
         ]);
     }
@@ -176,10 +194,11 @@ class ProductKnowledgeController extends Controller
         $user = $request->user();
 
         $q = ProductHarvestResult::with([
-            'product:id,name,price_1,uom_1,price_2,uom_2',
+            'product:id,name,category_id,price_1,uom_1,price_2,uom_2',
+            'product.category:id,name',
             'createdBy:id,name',
             'demoPlot:id,owner_name,population,product_id',
-            'photos:id,product_harvest_result_id,image_path,sort_order',
+            'photos:id,product_harvest_result_id,image_path,sort_order,photo_type',
         ])->orderByDesc('created_datetime')->orderByDesc('id');
 
         if (!empty($filter['search'])) {
@@ -223,6 +242,7 @@ class ProductKnowledgeController extends Controller
             $arr = $item->toArray();
             $rawPhotoPath = trim((string) ($arr['photo_path'] ?? ''));
             $photoUrls = [];
+            $weaknessPhotoUrls = [];
 
             foreach (($arr['photos'] ?? []) as $photo) {
                 $imgPath = trim((string) ($photo['image_path'] ?? ''));
@@ -233,7 +253,14 @@ class ProductKnowledgeController extends Controller
                 if (str_starts_with($normalized, 'public/')) {
                     $normalized = substr($normalized, 7);
                 }
-                $photoUrls[] = '/' . ltrim($normalized, '/');
+
+                $url = '/' . ltrim($normalized, '/');
+                $type = strtolower((string) ($photo['photo_type'] ?? 'general'));
+                if ($type === 'weakness') {
+                    $weaknessPhotoUrls[] = $url;
+                } else {
+                    $photoUrls[] = $url;
+                }
             }
 
             if ($rawPhotoPath !== '') {
@@ -242,15 +269,16 @@ class ProductKnowledgeController extends Controller
                     $normalizedPhotoPath = substr($normalizedPhotoPath, 7);
                 }
                 $legacyUrl = '/' . ltrim($normalizedPhotoPath, '/');
-                if (!in_array($legacyUrl, $photoUrls, true)) {
-                    array_unshift($photoUrls, $legacyUrl);
-                }
+                // Selalu prioritaskan photo_path sebagai cover/thumbnail utama.
+                $photoUrls = array_values(array_filter($photoUrls, fn ($url) => $url !== $legacyUrl));
+                array_unshift($photoUrls, $legacyUrl);
             } else {
                 $legacyUrl = null;
             }
 
             $arr['photo_urls'] = array_values(array_unique($photoUrls));
             $arr['photo_url'] = $arr['photo_urls'][0] ?? $legacyUrl;
+            $arr['weakness_photo_urls'] = array_values(array_unique($weaknessPhotoUrls));
             $arr['can_edit'] = $canManage;
             $arr['can_delete'] = $canManage;
 

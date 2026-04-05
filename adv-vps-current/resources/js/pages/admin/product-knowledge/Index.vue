@@ -5,6 +5,7 @@ import AuthenticatedLayout from "@/layouts/AuthenticatedLayout.vue";
 import axios from "axios";
 import { useQuasar } from "quasar";
 import dayjs from "dayjs";
+import ECharts from "vue-echarts";
 
 const page = usePage();
 const categories = page.props.categories ?? [];
@@ -50,13 +51,19 @@ const harvestItems = ref([]);
 const harvestLoading = ref(false);
 const harvestViewMode = ref("card");
 const harvestDetailDialog = ref(false);
+const harvestPhotoViewerDialog = ref(false);
+const selectedHarvestPhotoViewerUrl = ref(null);
 const selectedHarvest = ref(null);
 const detailMobileTab = ref("summary");
 const editMode = ref(false);
 const savingEdit = ref(false);
 const deletingItem = ref(false);
+const deletingPhotoKey = ref(null);
 const editPhotoFiles = ref([]);
 const editPhotoPreviews = ref([]);
+const editWeaknessPhotoFiles = ref([]);
+const editWeaknessPhotoPreviews = ref([]);
+const editThumbnailSelection = ref("");
 const editErrors = ref({});
 
 const editForm = reactive({
@@ -67,6 +74,7 @@ const editForm = reactive({
   harvest_date: "",
   harvest_age_days: null,
   harvest_quantity: null,
+  putren_quantity: null,
   total_pieces: null,
   germination_percentage: null,
   is_multiple_harvest: false,
@@ -107,12 +115,131 @@ const editSelectedDemoPlot = computed(() => {
   return demoPlots.find((item) => Number(item.id) === Number(editForm.demo_plot_id || 0)) || null;
 });
 
+const selectedEditProduct = computed(() => {
+  return productById.value.get(Number(editForm.product_id || 0)) || null;
+});
+
+const isFreshCornEdit = computed(() => {
+  const categoryName = String(selectedEditProduct.value?.category_name || "").toLowerCase();
+  if (categoryName) {
+    return categoryName.includes("fresh corn");
+  }
+  const name = String(selectedEditProduct.value?.name || "").toLowerCase();
+  return name.includes("fresh corn");
+});
+
 const editTotalHarvestQuantity = computed(() => {
   if (!editForm.is_multiple_harvest) {
     return Number(editForm.harvest_quantity || 0);
   }
   return editForm.harvest_cycles.reduce((sum, cycle) => sum + Number(cycle.quantity || 0), 0);
 });
+
+const editThumbnailChoices = computed(() => {
+  const choices = [];
+  const existingPhotos = (Array.isArray(selectedHarvest.value?.photos) ? selectedHarvest.value.photos : [])
+    .filter((photo) => (String(photo?.photo_type || "general").toLowerCase() !== "weakness"));
+
+  existingPhotos.forEach((photo, index) => {
+    choices.push({
+      value: `existing:${photo?.id ?? index}`,
+      label: `Foto lama ${index + 1}`,
+      src: getPhotoUrl({ photo_urls: [photo?.image_path] }) || null,
+    });
+  });
+
+  editPhotoPreviews.value.forEach((src, index) => {
+    choices.push({
+      value: `new:${index}`,
+      label: `Upload baru ${index + 1}`,
+      src,
+    });
+  });
+
+  return choices.filter((item) => item.src);
+});
+
+const editExistingPhotos = computed(() => {
+  const existingPhotos = (Array.isArray(selectedHarvest.value?.photos) ? selectedHarvest.value.photos : [])
+    .filter((photo) => (String(photo?.photo_type || "general").toLowerCase() !== "weakness"));
+  const photosFromRelation = existingPhotos
+    .map((photo, index) => ({
+      key: `photo-${photo?.id}`,
+      id: photo?.id,
+      label: `Foto ${index + 1}`,
+      src: getPhotoUrl({ photo_urls: [photo?.image_path] }) || null,
+      source: "record",
+      rawPath: photo?.image_path || null,
+    }))
+    .filter((photo) => photo.id !== undefined && photo.id !== null && photo.src);
+
+  const currentPhotoPath = String(selectedHarvest.value?.photo_path || "").trim();
+  if (!currentPhotoPath) {
+    return photosFromRelation;
+  }
+
+  const normalizedCurrent = normalizePhotoReference(currentPhotoPath);
+  const hasMatchedRecord = photosFromRelation.some((photo) => {
+    return normalizePhotoReference(photo.rawPath) === normalizedCurrent;
+  });
+
+  if (!hasMatchedRecord) {
+    photosFromRelation.unshift({
+      key: "legacy-photo-path",
+      id: null,
+      label: "Foto Legacy (Thumbnail Lama)",
+      src: getPhotoUrl({ photo_urls: [currentPhotoPath] }) || null,
+      source: "legacy",
+      rawPath: currentPhotoPath,
+    });
+  }
+
+  return photosFromRelation.filter((photo) => photo.src);
+});
+
+function normalizePhotoReference(raw) {
+  const value = String(raw || "").trim();
+  if (!value) {
+    return null;
+  }
+
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    return value;
+  }
+
+  let normalized = value.replace(/\\/g, "/").replace(/^\/+/, "");
+  if (normalized.startsWith("public/")) {
+    normalized = normalized.slice(7);
+  }
+
+  return `${window.location.origin}/${normalized}`;
+}
+
+function resolveThumbnailSelection(item) {
+  const currentThumbnail = normalizePhotoReference(item?.photo_path || item?.photo_url || getPhotoUrl(item));
+  const existingPhotos = (Array.isArray(item?.photos) ? item.photos : [])
+    .filter((photo) => (String(photo?.photo_type || "general").toLowerCase() !== "weakness"));
+
+  if (currentThumbnail) {
+    const matchedExisting = existingPhotos.find((photo) => normalizePhotoReference(photo?.image_path) === currentThumbnail);
+    if (matchedExisting?.id !== undefined && matchedExisting?.id !== null) {
+      return `existing:${matchedExisting.id}`;
+    }
+  }
+
+  if (existingPhotos.length > 0) {
+    const firstExisting = existingPhotos[0];
+    if (firstExisting?.id !== undefined && firstExisting?.id !== null) {
+      return `existing:${firstExisting.id}`;
+    }
+  }
+
+  if (editPhotoPreviews.value.length > 0) {
+    return "new:0";
+  }
+
+  return "";
+}
 
 function firstError(value) {
   if (Array.isArray(value)) {
@@ -199,18 +326,121 @@ const selectedHarvestMetrics = computed(() => {
     ? (qty / totalPcs)
     : (Number(item.per_piece_quantity || 0) || null);
   const perTreeYield = productivityPerGrownPlant;
+  const putrenQty = Number(item.putren_quantity || 0) || null;
+  const putrenPerPieceYield = putrenQty && totalPcs > 0
+    ? (putrenQty / totalPcs)
+    : (Number(item.putren_per_piece_quantity || 0) || null);
+  const putrenPerTreeYield = putrenQty && estimatedGrownPlants
+    ? (putrenQty / estimatedGrownPlants)
+    : (Number(item.putren_per_tree_quantity || 0) || null);
+  const isFreshCorn = String(item?.product?.name || product?.name || "").toLowerCase().includes("fresh corn");
 
   return {
     qty,
+    putrenQty,
     totalPcs,
     population,
     perPieceYield,
     perTreeYield,
+    putrenPerPieceYield,
+    putrenPerTreeYield,
+    isFreshCorn,
     seedsPerPiece,
     totalSeedCount,
     germination,
     estimatedGrownPlants,
     productivityPerGrownPlant,
+  };
+});
+
+const selectedHarvestPhotoUrls = computed(() => getGalleryPhotoUrls(selectedHarvest.value));
+
+const selectedHarvestCoverPhotoUrl = computed(() => selectedHarvestPhotoUrls.value[0] || null);
+
+const selectedHarvestCycleData = computed(() => {
+  const cycles = Array.isArray(selectedHarvest.value?.harvest_cycles) ? selectedHarvest.value.harvest_cycles : [];
+  return cycles
+    .map((cycle, index) => ({
+      label: cycle?.label || `K${index + 1}`,
+      quantity: Number(cycle?.quantity || 0),
+      date: cycle?.date || null,
+    }))
+    .filter((cycle) => cycle.quantity > 0 || cycle.date);
+});
+
+const selectedHarvestCyclePeak = computed(() => {
+  const cycles = selectedHarvestCycleData.value;
+  if (!cycles.length) {
+    return null;
+  }
+
+  return cycles.reduce((peak, cycle) => {
+    if (!peak || Number(cycle.quantity) > Number(peak.quantity)) {
+      return cycle;
+    }
+    return peak;
+  }, null);
+});
+
+const selectedHarvestCycleChartOption = computed(() => {
+  const cycles = selectedHarvestCycleData.value;
+  if (!cycles.length) {
+    return null;
+  }
+
+  const peakLabel = selectedHarvestCyclePeak.value?.label || null;
+  const labels = cycles.map((cycle) => cycle.label);
+  const quantities = cycles.map((cycle) => Number(cycle.quantity || 0));
+
+  return {
+    backgroundColor: "transparent",
+    tooltip: {
+      trigger: "axis",
+      axisPointer: { type: "shadow" },
+      formatter(params) {
+        const point = Array.isArray(params) ? params[0] : params;
+        const cycle = cycles[point.dataIndex] || null;
+        return [
+          `<div style="font-weight:700;margin-bottom:4px">${cycle?.label || '-'}</div>`,
+          `<div>Total: <b>${formatNumber(cycle?.quantity || 0)} ${selectedHarvest.value?.harvest_unit || 'kg'}</b></div>`,
+          cycle?.date ? `<div>Tanggal: ${formatDate(cycle.date)}</div>` : "",
+        ].filter(Boolean).join("<br/>");
+      },
+    },
+    grid: { left: 8, right: 8, top: 24, bottom: 32, containLabel: true },
+    xAxis: {
+      type: "category",
+      data: labels,
+      axisTick: { alignWithLabel: true },
+      axisLabel: { color: "#5a7184", fontWeight: 600 },
+      axisLine: { lineStyle: { color: "#d7e3ef" } },
+    },
+    yAxis: {
+      type: "value",
+      axisLabel: { color: "#5a7184" },
+      splitLine: { lineStyle: { color: "#eaf0f5" } },
+    },
+    series: [
+      {
+        type: "bar",
+        data: quantities.map((quantity, index) => ({
+          value: quantity,
+          itemStyle: {
+            color: labels[index] === peakLabel ? "#f59e0b" : "#1976d2",
+          },
+        })),
+        barWidth: 24,
+        showBackground: true,
+        backgroundStyle: { color: "#eef4fa" },
+        label: {
+          show: true,
+          position: "top",
+          color: "#1f3f60",
+          fontWeight: 700,
+          formatter: ({ value }) => formatNumber(value || 0),
+        },
+      },
+    ],
   };
 });
 
@@ -242,61 +472,95 @@ function getPerTreeYield(item) {
   return qty / estimatedPlants;
 }
 
-function getPhotoUrl(item) {
-  const urls = getPhotoUrls(item);
-  console.log('[DEBUG] Photo URLs for item', item?.id, ':', urls);
-  if (urls.length > 0) {
-    console.log('[DEBUG] Using first URL:', urls[0]);
-    return urls[0];
-  }
-  console.log('[DEBUG] No photo URLs found for item', item?.id);
-  return null;
-}
+function getGalleryPhotoUrls(item) {
+  const normalize = (raw) => {
+    const value = String(raw || "").trim();
+    if (!value) return null;
 
-function getPhotoUrls(item) {
-  const fromArray = Array.isArray(item?.photo_urls) ? item.photo_urls : [];
-  const urls = fromArray
-    .map((url) => String(url || "").trim())
-    .filter(Boolean)
-    .map((url) => {
-      // If it's already a relative path starting with /, use it directly
-      if (url.startsWith('/') && !url.startsWith('//')) {
-        return url;
-      }
-      // Handle full URLs
-      if (url.startsWith("http://") || url.startsWith("https://")) {
-        try {
-          const parsed = new URL(url);
-          return `${parsed.pathname}${parsed.search}`;
-        } catch (error) {
-          console.warn('Failed to parse photo URL:', url, error);
-          return url;
-        }
-      }
-      // Handle relative paths without leading slash
-      return `/${url}`;
-    });
+    if (value.startsWith("http://") || value.startsWith("https://")) {
+      return value;
+    }
 
+    let normalized = value.replace(/\\\\/g, "/").replace(/^\/+/, "");
+    if (normalized.startsWith("public/")) {
+      normalized = normalized.slice(7);
+    }
+
+    return `${window.location.origin}/${normalized}`;
+  };
+
+  const urls = Array.isArray(item?.photo_urls) ? item.photo_urls.map(normalize).filter(Boolean) : [];
   if (urls.length > 0) {
     return Array.from(new Set(urls));
   }
 
-  const single = getPhotoUrlLegacy(item);
-  return single ? [single] : [];
+  const fallback = getPhotoUrlLegacy(item);
+  return fallback ? [fallback] : [];
+}
+
+function getPhotoUrl(item) {
+  const urls = getPhotoUrls(item);
+  return urls.length > 0 ? urls[0] : null;
+}
+
+function getPhotoUrls(item) {
+  const candidates = new Set();
+
+  const addCandidate = (url) => {
+    const value = String(url || "").trim();
+    if (value) {
+      candidates.add(value);
+    }
+  };
+
+  const addFromRawPath = (raw) => {
+    const value = String(raw || "").trim();
+    if (!value) return;
+
+    if (value.startsWith("http://") || value.startsWith("https://")) {
+      addCandidate(value);
+      try {
+        const parsed = new URL(value);
+        const path = `${parsed.pathname}${parsed.search}`;
+        addCandidate(path);
+        addCandidate(`${window.location.origin}${path}`);
+      } catch (error) {
+        // Ignore malformed URL and keep original candidate.
+      }
+      return;
+    }
+
+    let normalized = value.replace(/\\\\/g, "/").replace(/^\/+/, "");
+    if (normalized.startsWith("public/")) {
+      normalized = normalized.slice(7);
+    }
+
+    const encoded = encodeURI(normalized);
+    addCandidate(`/${normalized}`);
+    addCandidate(`/${encoded}`);
+    addCandidate(`${window.location.origin}/${normalized}`);
+    addCandidate(`${window.location.origin}/${encoded}`);
+  };
+
+  (Array.isArray(item?.photo_urls) ? item.photo_urls : []).forEach(addFromRawPath);
+  addFromRawPath(item?.photo_url);
+  addFromRawPath(item?.photo_path);
+
+  return Array.from(candidates);
 }
 
 function getPhotoUrlLegacy(item) {
   const explicitUrl = String(item?.photo_url || "").trim();
   if (explicitUrl) {
     if (explicitUrl.startsWith("http://") || explicitUrl.startsWith("https://")) {
-      try {
-        const parsed = new URL(explicitUrl);
-        return `${parsed.pathname}${parsed.search}`;
-      } catch (error) {
-        return explicitUrl;
-      }
+      return explicitUrl;
     }
-    return explicitUrl;
+
+    let normalizedExplicit = explicitUrl.replace(/\\\\/g, "/").replace(/^\/+/, "");
+    if (normalizedExplicit.startsWith("public/")) {
+      normalizedExplicit = normalizedExplicit.slice(7);
+    }
+    return `${window.location.origin}/${normalizedExplicit}`;
   }
 
   const rawPath = String(item?.photo_path || "").trim();
@@ -313,7 +577,30 @@ function getPhotoUrlLegacy(item) {
     normalized = normalized.slice(7);
   }
 
-  return `/${normalized}`;
+  return `${window.location.origin}/${normalized}`;
+}
+
+function handleCardPhotoError(event, item) {
+  const imgEl = event?.target;
+  if (!imgEl) return;
+
+  const candidates = getPhotoUrls(item);
+  if (candidates.length <= 1) return;
+
+  const currentSrc = imgEl.getAttribute("src") || "";
+  const currentIndexAttr = Number(imgEl.dataset.fallbackIndex || 0);
+  const currentIndex = Number.isFinite(currentIndexAttr) ? currentIndexAttr : 0;
+
+  let nextIndex = currentIndex + 1;
+  const discoveredIndex = candidates.findIndex((url) => url === currentSrc);
+  if (discoveredIndex >= 0) {
+    nextIndex = discoveredIndex + 1;
+  }
+
+  if (nextIndex < candidates.length) {
+    imgEl.dataset.fallbackIndex = String(nextIndex);
+    imgEl.setAttribute("src", candidates[nextIndex]);
+  }
 }
 
 function getHarvestCycleCount(item) {
@@ -534,6 +821,67 @@ function exportHarvestDetailCsv() {
   $q.notify({ type: "positive", message: "Detail hasil panen berhasil diexport.", position: "top" });
 }
 
+function resolveDownloadFilename(headers, fallback) {
+  const disposition = headers?.["content-disposition"] || headers?.["Content-Disposition"] || "";
+  const matchUtf = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (matchUtf?.[1]) {
+    return decodeURIComponent(matchUtf[1]);
+  }
+
+  const match = disposition.match(/filename="?([^";]+)"?/i);
+  if (match?.[1]) {
+    return match[1];
+  }
+
+  return fallback;
+}
+
+async function exportHarvestPdf(item) {
+  if (!item?.id) {
+    return;
+  }
+
+  try {
+    const exportUrl = route("admin.harvest-result.export-pdf", item.id);
+
+    // Pada beberapa perangkat BS (mobile/PWA), unduh blob sering gagal.
+    // Gunakan direct download endpoint agar file PDF tetap bisa terunduh.
+    if (isBs || $q.screen.lt.md) {
+      window.location.href = exportUrl;
+      return;
+    }
+
+    const response = await axios.get(route("admin.harvest-result.export-pdf", item.id), {
+      responseType: "blob",
+    });
+
+    const contentType = String(response?.headers?.["content-type"] || "").toLowerCase();
+    if (!contentType.includes("pdf")) {
+      window.location.href = exportUrl;
+      return;
+    }
+
+    const fallbackName = `laporan-hasil-panen-${item.id}.pdf`;
+    const filename = resolveDownloadFilename(response.headers, fallbackName);
+    const blob = new Blob([response.data], { type: "application/pdf" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  } catch (error) {
+    if (isBs || $q.screen.lt.md) {
+      window.location.href = route("admin.harvest-result.export-pdf", item.id);
+      return;
+    }
+
+    const message = error?.response?.data?.message || "Gagal mengunduh laporan PDF.";
+    $q.notify({ type: "negative", message, position: "top" });
+  }
+}
+
 function openHarvestDetail(item) {
   selectedHarvest.value = item;
   detailMobileTab.value = "summary";
@@ -547,6 +895,11 @@ function openHarvestEdit(item) {
   editMode.value = true;
 }
 
+function openHarvestPhotoViewer(url) {
+  selectedHarvestPhotoViewerUrl.value = url;
+  harvestPhotoViewerDialog.value = true;
+}
+
 function resetEditForm(item) {
   editForm.farmer_source = item?.demo_plot_id ? "demo_plot" : "manual";
   editForm.product_id = item?.product_id ?? null;
@@ -555,6 +908,7 @@ function resetEditForm(item) {
   editForm.harvest_date = item?.harvest_date ? String(item.harvest_date).slice(0, 10) : "";
   editForm.harvest_age_days = item?.harvest_age_days ?? null;
   editForm.harvest_quantity = item?.harvest_quantity ?? null;
+  editForm.putren_quantity = item?.putren_quantity ?? null;
   editForm.total_pieces = item?.total_pieces ?? null;
   editForm.germination_percentage = item?.germination_percentage ?? null;
   editForm.is_multiple_harvest = Boolean(item?.is_multiple_harvest);
@@ -574,6 +928,10 @@ function resetEditForm(item) {
   editPhotoPreviews.value.forEach((url) => URL.revokeObjectURL(url));
   editPhotoPreviews.value = [];
   editPhotoFiles.value = [];
+  editWeaknessPhotoPreviews.value.forEach((url) => URL.revokeObjectURL(url));
+  editWeaknessPhotoPreviews.value = [];
+  editWeaknessPhotoFiles.value = [];
+  editThumbnailSelection.value = resolveThumbnailSelection(item);
 }
 
 function handleEditPhotoChange(files) {
@@ -583,11 +941,31 @@ function handleEditPhotoChange(files) {
   if (Array.isArray(files)) {
     editPhotoFiles.value = files.filter(Boolean);
     editPhotoPreviews.value = editPhotoFiles.value.map((file) => URL.createObjectURL(file));
+    if (!editThumbnailSelection.value || !editThumbnailSelection.value.startsWith("new:")) {
+      editThumbnailSelection.value = editPhotoPreviews.value.length > 0 ? "new:0" : editThumbnailSelection.value;
+    }
     return;
   }
 
   editPhotoFiles.value = files ? [files] : [];
   editPhotoPreviews.value = editPhotoFiles.value.map((file) => URL.createObjectURL(file));
+  if (!editThumbnailSelection.value || !editThumbnailSelection.value.startsWith("new:")) {
+    editThumbnailSelection.value = editPhotoPreviews.value.length > 0 ? "new:0" : editThumbnailSelection.value;
+  }
+}
+
+function handleEditWeaknessPhotoChange(files) {
+  editWeaknessPhotoPreviews.value.forEach((url) => URL.revokeObjectURL(url));
+  editWeaknessPhotoPreviews.value = [];
+
+  if (Array.isArray(files)) {
+    editWeaknessPhotoFiles.value = files.filter(Boolean);
+    editWeaknessPhotoPreviews.value = editWeaknessPhotoFiles.value.map((file) => URL.createObjectURL(file));
+    return;
+  }
+
+  editWeaknessPhotoFiles.value = files ? [files] : [];
+  editWeaknessPhotoPreviews.value = editWeaknessPhotoFiles.value.map((file) => URL.createObjectURL(file));
 }
 
 watch(
@@ -638,6 +1016,12 @@ watch(
   }
 );
 
+watch(isFreshCornEdit, (isFresh) => {
+  if (!isFresh) {
+    editForm.putren_quantity = null;
+  }
+});
+
 watch(editTotalHarvestQuantity, (value) => {
   if (editForm.is_multiple_harvest) {
     editForm.harvest_quantity = Number(value || 0);
@@ -672,6 +1056,7 @@ async function saveHarvestEdit() {
     formData.append("product_id", String(editForm.product_id || selectedHarvest.value.product_id || ""));
     formData.append("harvest_date", editForm.harvest_date || "");
     formData.append("harvest_quantity", String(editTotalHarvestQuantity.value || 0));
+    formData.append("putren_quantity", isFreshCornEdit.value ? String(editForm.putren_quantity ?? "") : "");
     formData.append("total_pieces", String(editForm.total_pieces ?? ""));
     formData.append("germination_percentage", String(editForm.germination_percentage ?? ""));
     formData.append("is_multiple_harvest", editForm.is_multiple_harvest ? "1" : "0");
@@ -684,6 +1069,7 @@ async function saveHarvestEdit() {
     formData.append("strengths", editForm.strengths || "");
     formData.append("weaknesses", editForm.weaknesses || "");
     formData.append("notes", editForm.notes || "");
+    formData.append("thumbnail_selection", editThumbnailSelection.value || "");
 
     if (editForm.is_multiple_harvest) {
       editForm.harvest_cycles.forEach((cycle, index) => {
@@ -700,6 +1086,16 @@ async function saveHarvestEdit() {
     if (selectedFiles.length > 0) {
       selectedFiles.forEach((file) => {
         formData.append("photos[]", file);
+      });
+    }
+
+    const selectedWeaknessFiles = Array.isArray(editWeaknessPhotoFiles.value)
+      ? editWeaknessPhotoFiles.value
+      : (editWeaknessPhotoFiles.value ? [editWeaknessPhotoFiles.value] : []);
+
+    if (selectedWeaknessFiles.length > 0) {
+      selectedWeaknessFiles.forEach((file) => {
+        formData.append("weakness_photos[]", file);
       });
     }
 
@@ -724,6 +1120,49 @@ async function saveHarvestEdit() {
   } finally {
     savingEdit.value = false;
   }
+}
+
+function confirmDeleteHarvestPhoto(photo) {
+  if (!selectedHarvest.value?.id || !photo) {
+    return;
+  }
+
+  $q.dialog({
+    title: "Hapus Foto Panen",
+    message: "Foto yang dihapus tidak bisa dikembalikan. Lanjutkan?",
+    cancel: true,
+    persistent: true,
+    ok: { color: "negative", label: "Hapus" },
+  }).onOk(async () => {
+    deletingPhotoKey.value = photo.key;
+    try {
+      if (photo.source === "legacy") {
+        await axios.post(route("admin.harvest-result.photo.delete-legacy", selectedHarvest.value.id), {
+          photo_path: photo.rawPath,
+        });
+      } else {
+        await axios.post(route("admin.harvest-result.photo.delete", {
+          id: selectedHarvest.value.id,
+          photoId: photo.id,
+        }));
+      }
+
+      await fetchHarvests();
+      const updated = harvestItems.value.find((item) => Number(item.id) === Number(selectedHarvest.value.id));
+      if (updated) {
+        selectedHarvest.value = updated;
+        resetEditForm(updated);
+        editMode.value = true;
+      }
+
+      $q.notify({ type: "positive", message: "Foto panen berhasil dihapus.", position: "top" });
+    } catch (error) {
+      const message = error?.response?.data?.message || "Gagal menghapus foto panen.";
+      $q.notify({ type: "negative", message, position: "top" });
+    } finally {
+      deletingPhotoKey.value = null;
+    }
+  });
 }
 
 function confirmDeleteHarvest() {
@@ -786,47 +1225,78 @@ const isBs = page.props.auth?.user?.role === "bs";
   <AuthenticatedLayout>
     <template #title>Product Knowledge</template>
     <template #header>
-      <q-toolbar class="filter-bar">
-        <div class="row q-col-gutter-xs items-center q-pa-sm full-width">
-          <div class="col-12 col-md-auto">
-            <q-tabs
-              v-model="activeTab"
-              dense
-              active-color="primary"
-              indicator-color="primary"
-              class="bg-white rounded-borders q-pa-xs"
-            >
-              <q-tab name="gallery" icon="photo_library" label="Galeri Produk" />
-              <q-tab name="harvest" icon="agriculture" label="Hasil Panen" />
-            </q-tabs>
+      <q-toolbar class="filter-bar harvest-toolbar">
+        <div class="row items-center q-col-gutter-sm full-width">
+          <div class="col-12 col-lg-auto">
+            <div class="harvest-tab-shell">
+              <q-btn-toggle
+                v-model="activeTab"
+                unelevated
+                rounded
+                spread
+                toggle-color="primary"
+                color="white"
+                text-color="grey-8"
+                class="harvest-tab-toggle"
+                :options="[
+                  { label: 'Gallery', icon: 'photo_library', value: 'gallery' },
+                  { label: 'Hasil Panen', icon: 'inventory_2', value: 'harvest' },
+                ]"
+              />
+            </div>
           </div>
 
-          <div v-if="activeTab === 'gallery'" class="col-auto">
-            <q-input
-              v-model="filter.search"
-              dense
-              outlined
-              placeholder="Cari varietas..."
-              clearable
-              bg-color="white"
-              style="max-width:240px"
-            >
-              <template #prepend><q-icon name="search" size="18px" /></template>
-            </q-input>
+          <div class="col-12 col-lg-auto q-ml-lg-auto" v-if="activeTab === 'harvest'">
+            <div class="row q-gutter-xs justify-end harvest-summary-actions">
+              <q-btn
+                unelevated
+                color="primary"
+                icon="download"
+                label="Summary CSV"
+                class="harvest-summary-btn"
+                @click="exportHarvestAnalysisCsv"
+              />
+              <q-btn
+                unelevated
+                color="secondary"
+                icon="table_view"
+                label="Detail CSV"
+                class="harvest-summary-btn"
+                @click="exportHarvestDetailCsv"
+              />
+            </div>
           </div>
-          <div v-if="activeTab === 'gallery'" class="col-auto">
-            <q-select
-              v-model="filter.category_id"
-              :options="categoryOptions"
-              option-value="value"
-              option-label="label"
-              emit-value
-              map-options
-              dense
-              outlined
-              bg-color="white"
-              style="min-width:130px; max-width:180px"
-            />
+
+          <div v-if="activeTab === 'gallery'" class="col-12 col-lg-auto q-ml-lg-auto">
+            <div class="row q-col-gutter-sm justify-end harvest-gallery-filters">
+              <div class="col-12 col-sm-auto">
+                <q-input
+                  v-model="filter.search"
+                  dense
+                  outlined
+                  placeholder="Cari varietas..."
+                  clearable
+                  bg-color="white"
+                  class="harvest-filter-input"
+                >
+                  <template #prepend><q-icon name="search" size="18px" /></template>
+                </q-input>
+              </div>
+              <div class="col-12 col-sm-auto">
+                <q-select
+                  v-model="filter.category_id"
+                  :options="categoryOptions"
+                  option-value="value"
+                  option-label="label"
+                  emit-value
+                  map-options
+                  dense
+                  outlined
+                  bg-color="white"
+                  class="harvest-filter-select"
+                />
+              </div>
+            </div>
           </div>
 
           <div v-if="activeTab === 'harvest'" class="col-12">
@@ -945,13 +1415,13 @@ const isBs = page.props.auth?.user?.role === "bs";
       </div>
 
       <div v-else>
-        <q-card flat bordered class="q-mb-md harvest-feed-shell">
+        <q-card flat bordered class="q-mb-md harvest-header-shell">
           <q-card-section>
             <div class="row items-center justify-between q-col-gutter-sm">
               <div class="col-12 col-md-auto">
-                <div class="text-subtitle1 text-weight-medium">Data Input Hasil Panen BS</div>
+                <div class="text-subtitle1 text-weight-bold">Data Input Hasil Panen BS</div>
                 <div class="text-caption text-grey-7 q-mt-xs">
-                  Tampilan kartu dengan thumbnail dan data utama seperti galeri Product Knowledge.
+                  Tampilan galeri untuk membaca data panen lebih cepat dengan fokus foto dan ringkasan metrik.
                 </div>
               </div>
               <div class="col-12 col-md-auto">
@@ -967,111 +1437,82 @@ const isBs = page.props.auth?.user?.role === "bs";
                     color="grey-3"
                     text-color="grey-8"
                     :options="[
-                      { label: 'Card', value: 'card', icon: 'view_module' },
+                      { label: 'Gallery', value: 'card', icon: 'collections' },
                       { label: 'Table', value: 'table', icon: 'table_rows' },
                     ]"
                   />
                 </div>
               </div>
             </div>
+          </q-card-section>
+        </q-card>
 
-            <div v-if="harvestViewMode === 'card'" class="harvest-gallery-grid q-mt-md">
-              <q-card
-                v-for="item in harvestItems"
-                :key="`card-${item.id}`"
-                flat
-                bordered
-                class="harvest-entry-card"
-              >
-                <div class="harvest-entry-body">
-                  <div class="harvest-thumb-wrap compact">
-                    <q-img
-                      v-if="getPhotoUrl(item)"
-                      :src="getPhotoUrl(item)"
-                      ratio="4/3"
-                      class="harvest-thumb compact"
-                    >
-                      <template #error>
-                        <div class="harvest-no-thumb compact flex flex-center bg-grey-2">
-                          <q-icon name="broken_image" size="22px" color="grey-6" />
-                        </div>
-                      </template>
-                    </q-img>
-                    <div v-else class="harvest-no-thumb compact flex flex-center bg-grey-2">
-                      <q-icon name="agriculture" size="22px" color="grey-6" />
-                    </div>
+        <div v-if="harvestViewMode === 'card'" class="harvest-gallery-modern q-mb-md">
+          <q-card
+            v-for="item in harvestItems"
+            :key="`card-${item.id}`"
+            flat
+            bordered
+            class="harvest-modern-card"
+            @click="openHarvestDetail(item)"
+          >
+            <div class="harvest-modern-photo-wrap">
+              <img
+                v-if="getPhotoUrl(item)"
+                :src="getPhotoUrl(item)"
+                class="harvest-modern-photo"
+                loading="lazy"
+                data-fallback-index="0"
+                @error="handleCardPhotoError($event, item)"
+              />
+              <div v-else class="harvest-modern-photo-empty flex flex-center">
+                <q-icon name="image_not_supported" size="26px" color="grey-6" />
+              </div>
 
-                    <div class="harvest-tag-row compact">
-                      <span class="harvest-tag zone-tag" :title="item.altitude_mdpl !== null && item.altitude_mdpl !== undefined ? altitudeZone(item.altitude_mdpl) + ' (' + item.altitude_mdpl + ' mdpl)' : ''">
-                        {{ item.altitude_mdpl !== null && item.altitude_mdpl !== undefined ? altitudeZone(item.altitude_mdpl) : 'Zona -' }}
-                      </span>
-                      <span v-if="item.is_multiple_harvest" class="harvest-tag cycle-tag" title="Beberapa Kali Panen">
-                        Multi Panen
-                      </span>
-                    </div>
-                  </div>
-
-                  <q-card-section class="q-pt-sm harvest-content-section">
-                    <div class="harvest-title">{{ item.product?.name || '-' }}</div>
-                    <div class="harvest-subtitle">{{ item.farmer_name || '-' }}</div>
-
-                    <div class="harvest-stat-grid compact q-mt-sm">
-                      <div class="harvest-stat-item compact">
-                        <div class="harvest-stat-label">Tanggal</div>
-                        <div class="harvest-stat-value">{{ formatDate(item.harvest_date) }}</div>
-                      </div>
-                      <div class="harvest-stat-item compact text-right">
-                        <div class="harvest-stat-label">Total Panen</div>
-                        <div class="harvest-stat-value">{{ formatNumber(item.harvest_quantity) }} {{ item.harvest_unit || 'kg' }}</div>
-                      </div>
-                      <div class="harvest-stat-item compact">
-                        <div class="harvest-stat-label">Hasil per PCS</div>
-                        <div class="harvest-stat-value">
-                          {{ getPerPieceYield(item) ? `${formatNumber(getPerPieceYield(item))} ${item.harvest_unit || 'kg'}/pcs` : '-' }}
-                        </div>
-                      </div>
-                      <div class="harvest-stat-item compact text-right">
-                        <div class="harvest-stat-label">Hasil per Pohon</div>
-                        <div class="harvest-stat-value">
-                          {{ getPerTreeYield(item) ? `${formatNumber(getPerTreeYield(item))} ${item.harvest_unit || 'kg'}/pohon` : '-' }}
-                        </div>
-                      </div>
-                      <div class="harvest-stat-item compact">
-                        <div class="harvest-stat-label">Total Kali Panen</div>
-                        <div class="harvest-stat-value">{{ getHarvestCycleCount(item) }} kali</div>
-                      </div>
-                    </div>
-
-                    <div class="harvest-meta q-mt-sm">
-                      <div class="meta-line">Input: <b>{{ item.created_by?.name || '-' }}</b></div>
-                      <div class="meta-line">Waktu: {{ formatDateTime(item.created_datetime) }}</div>
-                    </div>
-
-                    <div class="row q-mt-sm justify-end q-gutter-sm">
-                      <q-btn
-                        dense
-                        flat
-                        color="primary"
-                        icon="visibility"
-                        label="Detail"
-                        @click="openHarvestDetail(item)"
-                      />
-                      <q-btn
-                        v-if="item.can_edit"
-                        dense
-                        unelevated
-                        color="secondary"
-                        icon="edit"
-                        label="Edit"
-                        @click="openHarvestEdit(item)"
-                      />
-                    </div>
-                  </q-card-section>
-                </div>
-              </q-card>
+              <div class="harvest-modern-tags">
+                <span class="harvest-modern-tag zone">
+                  {{ item.altitude_mdpl !== null && item.altitude_mdpl !== undefined ? altitudeZone(item.altitude_mdpl) : 'Zona -' }}
+                </span>
+                <span v-if="item.is_multiple_harvest" class="harvest-modern-tag cycle">Multi Panen</span>
+              </div>
             </div>
 
-            <div v-else class="q-mt-md harvest-table-wrap">
+            <q-card-section class="harvest-modern-body">
+              <div class="harvest-modern-title">{{ item.product?.name || '-' }}</div>
+              <div class="harvest-modern-subtitle">{{ item.farmer_name || '-' }}</div>
+
+              <div class="harvest-modern-kpi-row q-mt-sm">
+                <div class="harvest-modern-kpi primary">
+                  <div class="label">Total Panen</div>
+                  <div class="value">{{ formatNumber(item.harvest_quantity) }} {{ item.harvest_unit || 'kg' }}</div>
+                </div>
+                <div class="harvest-modern-kpi">
+                  <div class="label">Tanggal</div>
+                  <div class="value">{{ formatDate(item.harvest_date) }}</div>
+                </div>
+              </div>
+
+              <div class="harvest-modern-chip-row q-mt-sm">
+                <span class="harvest-modern-chip">Per PCS: {{ getPerPieceYield(item) ? `${formatNumber(getPerPieceYield(item))} ${item.harvest_unit || 'kg'}` : '-' }}</span>
+                <span class="harvest-modern-chip">Per Pohon: {{ getPerTreeYield(item) ? `${formatNumber(getPerTreeYield(item))} ${item.harvest_unit || 'kg'}` : '-' }}</span>
+                <span class="harvest-modern-chip">Kali Panen: {{ getHarvestCycleCount(item) }}x</span>
+              </div>
+
+              <div class="harvest-modern-meta q-mt-sm">
+                <div>Input: <b>{{ item.created_by?.name || '-' }}</b></div>
+                <div>Waktu: {{ formatDateTime(item.created_datetime) }}</div>
+              </div>
+
+              <div class="row q-mt-sm justify-end q-gutter-sm">
+                <q-btn dense flat color="primary" icon="visibility" label="Detail" @click.stop="openHarvestDetail(item)" />
+                <q-btn dense flat color="accent" icon="picture_as_pdf" label="PDF" @click.stop="exportHarvestPdf(item)" />
+                <q-btn v-if="item.can_edit" dense unelevated color="secondary" icon="edit" label="Edit" @click.stop="openHarvestEdit(item)" />
+              </div>
+            </q-card-section>
+          </q-card>
+        </div>
+
+        <div v-else class="q-mt-md harvest-table-wrap">
               <q-markup-table flat bordered dense class="harvest-table">
                 <thead>
                   <tr>
@@ -1130,38 +1571,19 @@ const isBs = page.props.auth?.user?.role === "bs";
                     </td>
                     <td class="text-right">
                       <q-btn dense flat color="primary" icon="visibility" @click="openHarvestDetail(item)" />
+                      <q-btn dense flat color="accent" icon="picture_as_pdf" @click="exportHarvestPdf(item)" />
                       <q-btn v-if="item.can_edit" dense flat color="secondary" icon="edit" @click="openHarvestEdit(item)" />
                     </td>
                   </tr>
                 </tbody>
               </q-markup-table>
-            </div>
-          </q-card-section>
-        </q-card>
+        </div>
 
         <q-card flat bordered class="q-mb-md analysis-card">
           <q-card-section>
             <div class="row items-center justify-between q-col-gutter-sm">
               <div class="col-12 col-md-auto">
                 <div class="text-subtitle1 text-weight-medium">Summary Analisis Hasil Panen</div>
-              </div>
-              <div class="col-12 col-md-auto">
-                <div class="row q-gutter-sm justify-end">
-                  <q-btn
-                    outline
-                    color="primary"
-                    icon="download"
-                    label="Export Summary CSV"
-                    @click="exportHarvestAnalysisCsv"
-                  />
-                  <q-btn
-                    outline
-                    color="secondary"
-                    icon="table_view"
-                    label="Export Detail CSV"
-                    @click="exportHarvestDetailCsv"
-                  />
-                </div>
               </div>
             </div>
             <div class="text-caption text-grey-7 q-mt-xs">
@@ -1408,6 +1830,20 @@ const isBs = page.props.auth?.user?.role === "bs";
                       :error-message="firstError(editErrors.harvest_quantity)"
                     />
                   </div>
+                  <div class="col-12 col-md-3" v-if="isFreshCornEdit">
+                    <q-input
+                      v-model.number="editForm.putren_quantity"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      dense
+                      outlined
+                      label="Hasil Putren (kg)"
+                      hint="Khusus produk Fresh Corn"
+                      :error="Boolean(editErrors.putren_quantity)"
+                      :error-message="firstError(editErrors.putren_quantity)"
+                    />
+                  </div>
                   <div class="col-12 col-md-3">
                     <q-input
                       v-model.number="editForm.total_pieces"
@@ -1416,7 +1852,7 @@ const isBs = page.props.auth?.user?.role === "bs";
                       step="1"
                       dense
                       outlined
-                      label="Qty Panen (PCS)"
+                      label="Jumlah yang ditanam (PCS)"
                       :error="Boolean(editErrors.total_pieces)"
                       :error-message="firstError(editErrors.total_pieces)"
                     />
@@ -1563,6 +1999,101 @@ const isBs = page.props.auth?.user?.role === "bs";
                       </q-img>
                     </div>
                   </div>
+                  <div class="col-12 col-md-6">
+                    <q-file
+                      v-model="editWeaknessPhotoFiles"
+                      dense
+                      outlined
+                      accept="image/*"
+                      label="Upload foto kelemahan (bisa banyak)"
+                      multiple
+                      use-chips
+                      clearable
+                      @update:model-value="handleEditWeaknessPhotoChange"
+                      :error="Boolean(editErrors.weakness_photos)"
+                      :error-message="firstError(editErrors.weakness_photos)"
+                    />
+                    <div v-if="editWeaknessPhotoPreviews.length" class="detail-upload-grid q-mt-sm">
+                      <q-img
+                        v-for="(img, idx) in editWeaknessPhotoPreviews"
+                        :key="`edit-weakness-upload-${idx}`"
+                        :src="img"
+                        ratio="1"
+                        class="detail-upload-thumb"
+                      >
+                        <template #error>
+                          <div class="detail-upload-thumb flex flex-center bg-grey-2">
+                            <q-icon name="broken_image" size="18px" color="grey-6" />
+                          </div>
+                        </template>
+                      </q-img>
+                    </div>
+                  </div>
+                  <div class="col-12 col-md-6">
+                    <div class="text-subtitle2 text-weight-medium q-mb-xs">Pilih Thumbnail Foto</div>
+                    <div class="text-caption text-grey-7 q-mb-sm">
+                      Foto ini akan dipakai sebagai cover di card view dan tampilan ringkas.
+                    </div>
+                    <div v-if="editThumbnailChoices.length" class="detail-thumbnail-grid">
+                      <button
+                        v-for="choice in editThumbnailChoices"
+                        :key="choice.value"
+                        type="button"
+                        class="detail-thumbnail-choice"
+                        :class="{ selected: editThumbnailSelection === choice.value }"
+                        @click="editThumbnailSelection = choice.value"
+                      >
+                        <q-img :src="choice.src" ratio="1" class="detail-thumbnail-choice-img">
+                          <template #error>
+                            <div class="detail-thumbnail-choice-img flex flex-center bg-grey-2">
+                              <q-icon name="broken_image" size="18px" color="grey-6" />
+                            </div>
+                          </template>
+                        </q-img>
+                        <div class="detail-thumbnail-choice-label">
+                          <span>{{ choice.label }}</span>
+                          <q-badge v-if="editThumbnailSelection === choice.value" color="primary" rounded>
+                            Terpilih
+                          </q-badge>
+                        </div>
+                      </button>
+                    </div>
+                    <div v-else class="text-caption text-grey-7">
+                      Tambahkan foto dulu untuk memilih thumbnail.
+                    </div>
+                  </div>
+                  <div class="col-12">
+                    <div class="text-subtitle2 text-weight-medium q-mb-xs">Galeri Foto Panen (Foto Lama)</div>
+                    <div class="text-caption text-grey-7 q-mb-sm">
+                      Anda bisa hapus foto yang tidak diperlukan dari data panen ini.
+                    </div>
+                    <div v-if="editExistingPhotos.length" class="edit-existing-photo-grid">
+                      <div v-for="photo in editExistingPhotos" :key="`existing-photo-${photo.id}`" class="edit-existing-photo-item">
+                        <q-img :src="photo.src" ratio="1" class="edit-existing-photo-thumb">
+                          <template #error>
+                            <div class="edit-existing-photo-thumb flex flex-center bg-grey-2">
+                              <q-icon name="broken_image" size="18px" color="grey-6" />
+                            </div>
+                          </template>
+                        </q-img>
+                        <div class="edit-existing-photo-footer">
+                          <span>{{ photo.label }}</span>
+                          <q-btn
+                            dense
+                            flat
+                            color="negative"
+                            icon="delete"
+                            :loading="deletingPhotoKey === photo.key"
+                            :disable="deletingPhotoKey !== null"
+                            @click="confirmDeleteHarvestPhoto(photo)"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div v-else class="text-caption text-grey-7">
+                      Belum ada foto lama yang bisa dihapus.
+                    </div>
+                  </div>
                 </div>
                 <div class="row justify-end q-gutter-sm q-mt-sm">
                   <q-btn flat color="grey-7" label="Batal" @click="resetEditForm(selectedHarvest); editMode = false" />
@@ -1608,10 +2139,22 @@ const isBs = page.props.auth?.user?.role === "bs";
                       <div class="detail-metric-value">{{ formatNumber(selectedHarvestMetrics.qty) }} {{ selectedHarvest.harvest_unit || 'kg' }}</div>
                     </div>
                   </div>
+                  <div class="col-12 col-sm-6 col-md-4 col-lg-2" v-if="selectedHarvestMetrics.isFreshCorn">
+                    <div class="detail-metric-card">
+                      <div class="detail-metric-label">Hasil Putren</div>
+                      <div class="detail-metric-value">{{ selectedHarvestMetrics.putrenQty ? `${formatNumber(selectedHarvestMetrics.putrenQty)} ${selectedHarvest.harvest_unit || 'kg'}` : '-' }}</div>
+                    </div>
+                  </div>
                   <div class="col-12 col-sm-6 col-md-4 col-lg-2">
                     <div class="detail-metric-card">
                       <div class="detail-metric-label">Hasil per PCS</div>
                       <div class="detail-metric-value">{{ selectedHarvestMetrics.perPieceYield ? `${formatNumber(selectedHarvestMetrics.perPieceYield)} ${selectedHarvest.harvest_unit || 'kg'}/pcs` : '-' }}</div>
+                    </div>
+                  </div>
+                  <div class="col-12 col-sm-6 col-md-4 col-lg-2" v-if="selectedHarvestMetrics.isFreshCorn">
+                    <div class="detail-metric-card">
+                      <div class="detail-metric-label">Putren per PCS</div>
+                      <div class="detail-metric-value">{{ selectedHarvestMetrics.putrenPerPieceYield ? `${formatNumber(selectedHarvestMetrics.putrenPerPieceYield)} ${selectedHarvest.harvest_unit || 'kg'}/pcs` : '-' }}</div>
                     </div>
                   </div>
                   <div class="col-12 col-sm-6 col-md-4 col-lg-2">
@@ -1624,6 +2167,12 @@ const isBs = page.props.auth?.user?.role === "bs";
                     <div class="detail-metric-card">
                       <div class="detail-metric-label">Hasil per Pohon Tumbuh</div>
                       <div class="detail-metric-value">{{ selectedHarvestMetrics.perTreeYield ? `${formatNumber(selectedHarvestMetrics.perTreeYield)} ${selectedHarvest.harvest_unit || 'kg'}/pohon` : '-' }}</div>
+                    </div>
+                  </div>
+                  <div class="col-12 col-sm-6 col-md-4 col-lg-2" v-if="selectedHarvestMetrics.isFreshCorn">
+                    <div class="detail-metric-card">
+                      <div class="detail-metric-label">Putren per Pohon</div>
+                      <div class="detail-metric-value">{{ selectedHarvestMetrics.putrenPerTreeYield ? `${formatNumber(selectedHarvestMetrics.putrenPerTreeYield)} ${selectedHarvest.harvest_unit || 'kg'}/pohon` : '-' }}</div>
                     </div>
                   </div>
                   <div class="col-12 col-sm-6 col-md-4 col-lg-2">
@@ -1645,42 +2194,48 @@ const isBs = page.props.auth?.user?.role === "bs";
             <div class="row q-col-gutter-md detail-body-grid">
               <div
                 class="col-12"
-                v-if="getPhotoUrl(selectedHarvest)"
+                v-if="selectedHarvestPhotoUrls.length"
                 v-show="!$q.screen.lt.md || detailMobileTab === 'extra'"
               >
-                <q-card flat bordered class="q-mb-sm">
-                  <q-img :src="getPhotoUrl(selectedHarvest)" ratio="21/7" class="detail-photo-banner">
-                    <template #error>
-                      <div class="detail-photo-banner flex flex-center bg-grey-2">
-                        <q-icon name="broken_image" size="36px" color="grey-6" />
+                <q-card flat bordered class="detail-photo-gallery-shell">
+                  <q-card-section class="q-pb-sm">
+                    <div class="row items-center justify-between q-col-gutter-sm">
+                      <div class="col-12 col-sm-auto">
+                        <div class="text-subtitle2 text-weight-medium">Galeri Foto Panen</div>
+                        <div class="text-caption text-grey-7">
+                          {{ selectedHarvestPhotoUrls.length }} foto terhubung ke data ini.
+                        </div>
                       </div>
-                    </template>
-                  </q-img>
-                </q-card>
-              </div>
-
-              <div
-                class="col-12"
-                v-if="getPhotoUrls(selectedHarvest).length > 1"
-                v-show="!$q.screen.lt.md || detailMobileTab === 'extra'"
-              >
-                <q-card flat bordered>
-                  <q-card-section>
-                    <div class="text-subtitle2 text-weight-medium">Galeri Foto Panen</div>
-                    <div class="detail-photo-grid q-mt-sm">
-                      <q-img
-                        v-for="(img, idx) in getPhotoUrls(selectedHarvest)"
+                      <div class="col-12 col-sm-auto text-right text-caption text-grey-7">
+                        Foto utama: <b>{{ selectedHarvestCoverPhotoUrl ? 1 : 0 }}</b>
+                      </div>
+                    </div>
+                  </q-card-section>
+                  <q-card-section class="q-pt-none">
+                    <div class="detail-photo-showcase-main" v-if="selectedHarvestCoverPhotoUrl">
+                      <img
+                        :src="selectedHarvestCoverPhotoUrl"
+                        class="detail-photo-main-img"
+                        loading="lazy"
+                        alt="Foto utama panen"
+                      />
+                    </div>
+                    <div class="detail-photo-grid q-mt-md">
+                      <button
+                        v-for="(img, idx) in selectedHarvestPhotoUrls"
                         :key="`harvest-photo-${idx}`"
-                        :src="img"
-                        ratio="4/3"
-                        class="detail-gallery-thumb"
+                        type="button"
+                        class="detail-photo-thumb-btn"
+                        @click="openHarvestPhotoViewer(img)"
                       >
-                        <template #error>
-                          <div class="detail-gallery-thumb flex flex-center bg-grey-2">
-                            <q-icon name="broken_image" size="20px" color="grey-6" />
-                          </div>
-                        </template>
-                      </q-img>
+                        <img
+                          :src="img"
+                          class="detail-gallery-thumb-img"
+                          loading="lazy"
+                          :alt="`Foto panen ${idx + 1}`"
+                        />
+                        <span class="detail-photo-thumb-badge">{{ idx + 1 }}</span>
+                      </button>
                     </div>
                   </q-card-section>
                 </q-card>
@@ -1740,6 +2295,11 @@ const isBs = page.props.auth?.user?.role === "bs";
                       <div class="detail-key">Estimasi Tumbuh</div><div class="detail-val">{{ selectedHarvestMetrics?.estimatedGrownPlants ? `${formatNumber(selectedHarvestMetrics.estimatedGrownPlants, 0)} pohon` : '-' }}</div>
                       <div class="detail-key">Hasil per PCS</div><div class="detail-val">{{ selectedHarvestMetrics?.perPieceYield ? `${formatNumber(selectedHarvestMetrics.perPieceYield)} ${selectedHarvest.harvest_unit || 'kg'}/pcs` : '-' }}</div>
                       <div class="detail-key">Hasil per Pohon Tumbuh</div><div class="detail-val">{{ selectedHarvestMetrics?.perTreeYield ? `${formatNumber(selectedHarvestMetrics.perTreeYield)} ${selectedHarvest.harvest_unit || 'kg'}/pohon` : '-' }}</div>
+                      <template v-if="selectedHarvestMetrics?.isFreshCorn">
+                        <div class="detail-key">Hasil Putren</div><div class="detail-val">{{ selectedHarvestMetrics?.putrenQty ? `${formatNumber(selectedHarvestMetrics.putrenQty)} ${selectedHarvest.harvest_unit || 'kg'}` : '-' }}</div>
+                        <div class="detail-key">Putren per PCS</div><div class="detail-val">{{ selectedHarvestMetrics?.putrenPerPieceYield ? `${formatNumber(selectedHarvestMetrics.putrenPerPieceYield)} ${selectedHarvest.harvest_unit || 'kg'}/pcs` : '-' }}</div>
+                        <div class="detail-key">Putren per Pohon</div><div class="detail-val">{{ selectedHarvestMetrics?.putrenPerTreeYield ? `${formatNumber(selectedHarvestMetrics.putrenPerTreeYield)} ${selectedHarvest.harvest_unit || 'kg'}/pohon` : '-' }}</div>
+                      </template>
                       <div class="detail-key">Mode Panen</div><div class="detail-val">{{ selectedHarvest.is_multiple_harvest ? 'Beberapa Kali Panen' : 'Sekali Panen' }}</div>
                       <div class="detail-key">Penginput</div><div class="detail-val">{{ selectedHarvest.created_by?.name || '-' }}</div>
                       <div class="detail-key">Waktu Input</div><div class="detail-val">{{ formatDateTime(selectedHarvest.created_datetime) }}</div>
@@ -1750,14 +2310,19 @@ const isBs = page.props.auth?.user?.role === "bs";
 
               <div
                 class="col-12"
-                v-if="selectedHarvest.is_multiple_harvest && selectedHarvest.harvest_cycles && selectedHarvest.harvest_cycles.length"
-                v-show="!$q.screen.lt.md || detailMobileTab === 'cycles'"
+                v-if="selectedHarvest.is_multiple_harvest && selectedHarvest.harvest_cycles && selectedHarvest.harvest_cycles.length && (!$q.screen.lt.md || detailMobileTab === 'cycles')"
               >
                 <q-card flat bordered>
                   <q-card-section>
                     <div class="text-subtitle2 text-weight-medium">Rincian Panen Bertahap</div>
                     <div class="text-caption text-grey-7 q-mt-xs">
-                      Ringkasan K1/K2/dst ditata grid agar tidak menghabiskan ruang vertikal.
+                      Grafik membantu melihat siklus mana yang mencapai puncak panen.
+                    </div>
+                    <div v-if="selectedHarvestCycleChartOption" class="detail-cycle-chart q-mt-sm">
+                      <ECharts :option="selectedHarvestCycleChartOption" autoresize style="height: 260px; width: 100%;" />
+                    </div>
+                    <div v-if="selectedHarvestCyclePeak" class="detail-cycle-peak q-mt-sm">
+                      Puncak panen: <b>{{ selectedHarvestCyclePeak.label }}</b> dengan <b>{{ formatNumber(selectedHarvestCyclePeak.quantity) }} {{ selectedHarvest.harvest_unit || 'kg' }}</b>
                     </div>
                     <div class="cycle-grid-compact q-mt-sm">
                       <div
@@ -1790,6 +2355,32 @@ const isBs = page.props.auth?.user?.role === "bs";
             </div>
           </q-card-section>
         </q-card>
+      </q-dialog>
+
+      <q-dialog
+        v-model="harvestPhotoViewerDialog"
+        maximized
+        transition-show="scale"
+        transition-hide="scale"
+      >
+        <div class="photo-viewer-container">
+          <q-btn
+            round
+            flat
+            dense
+            icon="close"
+            color="white"
+            class="photo-viewer-close"
+            @click="harvestPhotoViewerDialog = false"
+          />
+          <img
+            v-if="selectedHarvestPhotoViewerUrl"
+            :src="selectedHarvestPhotoViewerUrl"
+            class="photo-viewer-image"
+            alt="Pratinjau foto panen"
+            @click="harvestPhotoViewerDialog = false"
+          />
+        </div>
       </q-dialog>
     </div>
   </AuthenticatedLayout>
@@ -1888,6 +2479,80 @@ const isBs = page.props.auth?.user?.role === "bs";
   max-width: none;
 }
 
+.harvest-toolbar {
+  background: linear-gradient(180deg, #f7fbff 0%, #eef5fb 100%);
+  border-bottom: 1px solid #d9e6f1;
+}
+
+.harvest-tab-shell {
+  display: inline-flex;
+  padding: 6px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid #d7e3ef;
+  box-shadow: 0 10px 24px rgba(19, 42, 64, 0.06);
+  backdrop-filter: blur(10px);
+}
+
+.harvest-tab-toggle {
+  min-height: 42px;
+}
+
+.harvest-tab-toggle :deep(.q-btn) {
+  min-height: 42px;
+  padding: 0 16px;
+  border-radius: 12px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.harvest-tab-toggle :deep(.q-btn--active) {
+  color: #11324d !important;
+  box-shadow: 0 8px 16px rgba(35, 84, 128, 0.12);
+}
+
+.harvest-summary-actions {
+  min-width: 0;
+}
+
+.harvest-summary-btn {
+  min-height: 42px;
+  border-radius: 12px;
+  padding-left: 14px;
+  padding-right: 14px;
+  font-weight: 600;
+}
+
+.harvest-gallery-filters {
+  align-items: stretch;
+}
+
+.harvest-filter-input,
+.harvest-filter-select {
+  min-width: 240px;
+}
+
+@media (max-width: 599px) {
+  .harvest-tab-shell {
+    display: flex;
+    width: 100%;
+  }
+
+  .harvest-tab-toggle {
+    width: 100%;
+  }
+
+  .harvest-filter-input,
+  .harvest-filter-select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .harvest-summary-btn {
+    width: 100%;
+  }
+}
+
 .harvest-filter-grid {
   width: 100%;
 }
@@ -1897,6 +2562,160 @@ const isBs = page.props.auth?.user?.role === "bs";
   max-width: none !important;
   background: linear-gradient(180deg, #f9fcff 0%, #ffffff 100%);
   border-color: #dbe8f3;
+}
+
+.harvest-header-shell {
+  width: 100% !important;
+  max-width: none !important;
+  background: linear-gradient(135deg, #eef6ff 0%, #ffffff 100%);
+  border-color: #d6e5f3;
+}
+
+.harvest-gallery-modern {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.harvest-modern-card {
+  width: 100% !important;
+  max-width: none !important;
+  border-radius: 14px;
+  overflow: hidden;
+  border-color: #d8e4f1;
+  background: #fff;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  cursor: pointer;
+}
+
+.harvest-modern-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 24px rgba(18, 48, 84, 0.14);
+}
+
+.harvest-modern-photo-wrap {
+  position: relative;
+  overflow: hidden;
+}
+
+.harvest-modern-photo,
+.harvest-modern-photo-empty {
+  width: 100%;
+  height: 122px;
+  object-fit: cover;
+  display: block;
+}
+
+.harvest-modern-photo-empty {
+  background: #ecf2f8;
+}
+
+@media (min-width: 1024px) {
+  .harvest-modern-photo,
+  .harvest-modern-photo-empty {
+    height: 110px;
+  }
+}
+
+.harvest-modern-tags {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.harvest-modern-tag {
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 4px 10px;
+  color: #fff;
+}
+
+.harvest-modern-tag.zone {
+  background: rgba(26, 74, 130, 0.9);
+}
+
+.harvest-modern-tag.cycle {
+  background: rgba(13, 102, 64, 0.9);
+}
+
+.harvest-modern-body {
+  padding: 10px 12px 12px !important;
+}
+
+.harvest-modern-title {
+  font-size: 16px;
+  line-height: 1.2;
+  font-weight: 800;
+  color: #1f3f60;
+}
+
+.harvest-modern-subtitle {
+  margin-top: 3px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #55708a;
+}
+
+.harvest-modern-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.harvest-modern-kpi {
+  border: 1px solid #e3ecf4;
+  border-radius: 9px;
+  padding: 8px;
+  background: #f8fbff;
+}
+
+.harvest-modern-kpi.primary {
+  background: #edf5ff;
+  border-color: #d1e4fb;
+}
+
+.harvest-modern-kpi .label {
+  font-size: 10px;
+  color: #73879b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.harvest-modern-kpi .value {
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #173554;
+}
+
+.harvest-modern-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.harvest-modern-chip {
+  font-size: 11px;
+  font-weight: 600;
+  color: #395b79;
+  border: 1px solid #dde8f2;
+  background: #fff;
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+
+.harvest-modern-meta {
+  border-top: 1px dashed #d9e5ef;
+  padding-top: 8px;
+  font-size: 12px;
+  color: #597086;
+  line-height: 1.45;
 }
 
 .harvest-table-wrap {
@@ -2163,6 +2982,117 @@ const isBs = page.props.auth?.user?.role === "bs";
   border-bottom: 1px solid #e8edf3;
 }
 
+.detail-photo-gallery-shell {
+  width: 100% !important;
+  max-width: none !important;
+  border-color: #dbe7f3;
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+}
+
+.detail-photo-showcase-main {
+  width: 100%;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #eef4fa;
+  border: 1px solid #dbe7f3;
+}
+
+.detail-photo-main-img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+
+.detail-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 10px;
+}
+
+.detail-photo-thumb-btn {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.detail-gallery-thumb-img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid #dce7ef;
+}
+
+.detail-photo-thumb-badge {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.75);
+  color: #fff;
+  font-size: 11px;
+  line-height: 20px;
+  text-align: center;
+  padding: 0 6px;
+}
+
+.detail-cycle-chart {
+  border: 1px solid #dbe7f3;
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.detail-cycle-peak {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #fff7e6;
+  border: 1px solid #f6d9a8;
+  color: #8a4b00;
+  font-size: 12px;
+}
+
+.photo-viewer-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.96);
+  overflow: hidden;
+}
+
+.photo-viewer-image {
+  max-width: 92vw;
+  max-height: 92vh;
+  object-fit: contain;
+  cursor: zoom-out;
+}
+
+.photo-viewer-close {
+  position: absolute !important;
+  top: 20px;
+  right: 20px;
+  z-index: 2;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.photo-viewer-close:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
 .detail-photo-banner {
   max-height: 220px;
 }
@@ -2247,6 +3177,78 @@ const isBs = page.props.auth?.user?.role === "bs";
   overflow: hidden;
 }
 
+.detail-thumbnail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px;
+}
+
+.detail-thumbnail-choice {
+  appearance: none;
+  border: 1px solid #d8e1ea;
+  border-radius: 14px;
+  background: #fff;
+  padding: 8px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.detail-thumbnail-choice:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(18, 48, 84, 0.08);
+}
+
+.detail-thumbnail-choice.selected {
+  border-color: #1f5ea8;
+  box-shadow: 0 0 0 2px rgba(31, 94, 168, 0.14);
+}
+
+.detail-thumbnail-choice-img {
+  width: 100%;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.detail-thumbnail-choice-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #38516d;
+}
+
+.edit-existing-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(126px, 1fr));
+  gap: 10px;
+}
+
+.edit-existing-photo-item {
+  border: 1px solid #dce7ef;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.edit-existing-photo-thumb {
+  width: 100%;
+}
+
+.edit-existing-photo-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 4px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #425f7d;
+}
+
 .detail-gallery-thumb {
   border-radius: 8px;
   border: 1px solid #dce7ef;
@@ -2286,6 +3288,14 @@ const isBs = page.props.auth?.user?.role === "bs";
 }
 
 @media (max-width: 640px) {
+  .harvest-gallery-modern {
+    grid-template-columns: 1fr;
+  }
+
+  .harvest-modern-kpi-row {
+    grid-template-columns: 1fr;
+  }
+
   .harvest-gallery-grid {
     grid-template-columns: 1fr;
   }
