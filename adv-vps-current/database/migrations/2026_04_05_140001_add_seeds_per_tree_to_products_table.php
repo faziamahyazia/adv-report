@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('products', function (Blueprint $table) {
-            $table->integer('seeds_per_tree')->nullable()->after('price')->comment('Jumlah biji per pohon (varietas)');
+            $table->integer('seeds_per_tree')->nullable()->after('jumlah_biji_per_pcs')->comment('Jumlah biji per pohon (varietas)');
         });
     }
 

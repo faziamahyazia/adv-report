@@ -118,7 +118,7 @@ class DemoPlotController extends Controller
             'owner_phone'      => 'nullable|string|max:30',
             'notes'            => 'nullable|string|max:500',
             'field_location'   => 'nullable|string|max:100',
-            'population_pcs'   => 'required|numeric|gt:0',
+            'population_pcs'   => 'nullable|numeric|gt:0',
             'population'       => 'nullable|numeric|gt:0',
             'jumlah_tanam'     => 'nullable|numeric|gte:0',
             'db_germinasi'     => 'nullable|numeric|gte:0|lte:100',
