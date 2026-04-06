@@ -425,8 +425,7 @@ const viewImage = (img) => {
 
 <style scoped>
 .complaint-detail-page {
-  max-width: 1400px;
-  margin: 0 auto;
+  /* Removed max-width for full width */
 }
 
 .gradient-card {
