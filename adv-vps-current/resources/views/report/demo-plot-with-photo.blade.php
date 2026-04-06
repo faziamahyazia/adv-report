@@ -21,18 +21,11 @@
       @forelse ($items as $index => $item)
         @php
           $src = null;
-
-          $tryPaths = [$item->latest_image_path ?? null, $item->image_path ?? null];
-
-          foreach ($tryPaths as $path) {
-              if ($path) {
-                  $fullPath = public_path($path);
-                  if (file_exists($fullPath)) {
-                      $imageData = base64_encode(file_get_contents($fullPath));
-                      $src = 'data:image/png;base64,' . $imageData;
-                      break;
-                  }
-              }
+          if (!($item->pdf_disable_image ?? false)) {
+            $src = public_image_file_uri($item->latest_image_path ?? null)
+              ?? public_image_file_uri($item->image_path ?? null)
+              ?? public_image_data_uri($item->latest_image_path ?? null)
+              ?? public_image_data_uri($item->image_path ?? null);
           }
         @endphp
         <tr>

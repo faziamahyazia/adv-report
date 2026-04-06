@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Carbon\Carbon;
 
 function getFiscalQuarterInfo(Carbon $date): array
@@ -382,4 +383,104 @@ function resolve_period(string $period, ?string $start = null, ?string $end = nu
     }
 
     return [$start_date->toDateString(), $end_date->toDateString()];
+}
+
+function normalize_public_image_path(?string $path): string
+{
+    $value = trim((string) $path);
+    if ($value === '') {
+        return '';
+    }
+
+    $normalized = str_replace('\\', '/', ltrim($value, '/'));
+    if (Str::startsWith($normalized, 'public/')) {
+        $normalized = substr($normalized, 7);
+    }
+
+    return $normalized;
+}
+
+function public_image_data_uri(?string $path): ?string
+{
+    $normalized = normalize_public_image_path($path);
+    if ($normalized === '') {
+        return null;
+    }
+
+    $fullPath = public_path($normalized);
+    if (!file_exists($fullPath) || !is_readable($fullPath)) {
+        return null;
+    }
+
+    $mime = @mime_content_type($fullPath);
+    if (!is_string($mime) || !Str::startsWith($mime, 'image/')) {
+        return null;
+    }
+
+    $binary = @file_get_contents($fullPath);
+    if ($binary === false) {
+        return null;
+    }
+
+    return 'data:' . $mime . ';base64,' . base64_encode($binary);
+}
+
+function public_image_file_uri(?string $path): ?string
+{
+    $normalized = normalize_public_image_path($path);
+    if ($normalized === '') {
+        return null;
+    }
+
+    $fullPath = public_path($normalized);
+    if (!file_exists($fullPath) || !is_readable($fullPath)) {
+        return null;
+    }
+
+    return 'file://' . $fullPath;
+}
+
+function store_public_image_upload($file, string $directory = 'uploads', ?string $existingPath = null): string
+{
+    if ($existingPath) {
+        $existingFullPath = public_path(normalize_public_image_path($existingPath));
+        if (file_exists($existingFullPath)) {
+            @unlink($existingFullPath);
+        }
+    }
+
+    $directory = trim($directory, '/');
+    $absoluteDirectory = public_path($directory);
+    if (!is_dir($absoluteDirectory)) {
+        mkdir($absoluteDirectory, 0755, true);
+    }
+
+    $originalName = preg_replace('/[^A-Za-z0-9._-]/', '_', basename((string) $file->getClientOriginalName()));
+    $filename = time() . '_' . $originalName;
+    $relativePath = $directory . '/' . $filename;
+    $absolutePath = public_path($relativePath);
+
+    if (extension_loaded('gd')) {
+        $manager = new \Intervention\Image\ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
+        $image = $manager->read($file);
+
+        $width = $image->width();
+        $height = $image->height();
+        $ratio = max($width / 1024, $height / 1024);
+
+        if ($ratio > 1) {
+            $newWidth = (int) round($width / $ratio);
+            $newHeight = (int) round($height / $ratio);
+            $image->resize($newWidth, $newHeight, function ($constraint) {
+                $constraint->aspectRatio();
+                $constraint->upsize();
+            });
+        }
+
+        $image->save($absolutePath);
+        return $relativePath;
+    }
+
+    $file->move($absoluteDirectory, $filename);
+    return $relativePath;
 }

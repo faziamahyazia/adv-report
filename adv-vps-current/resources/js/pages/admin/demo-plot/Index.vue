@@ -116,9 +116,20 @@ const columns = [
 
 onMounted(() => fetchItems());
 
+const getDeleteLabel = (row) => {
+  const ownerName = row?.owner_name?.trim();
+  const productName = row?.product?.name?.trim();
+
+  if (ownerName && productName) {
+    return `${productName} - ${ownerName}`;
+  }
+
+  return ownerName || productName || `#${row?.id ?? ''}`;
+};
+
 const deleteItem = (row) =>
   handleDelete({
-    message: `Hapus Demo Plot ${row.name}?`,
+    message: `Hapus Demo Plot ${getDeleteLabel(row)}?`,
     url: route("admin.demo-plot.delete", row.id),
     fetchItemsCallback: fetchItems,
     loading,

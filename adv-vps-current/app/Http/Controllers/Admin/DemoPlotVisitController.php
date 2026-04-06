@@ -136,39 +136,11 @@ class DemoPlotVisitController extends Controller
 
         // Handle image upload jika ada
         if ($request->hasFile('image')) {
-            // Hapus file lama jika ada
-            if ($item->image_path && file_exists(public_path($item->image_path))) {
-                @unlink(public_path($item->image_path)); // pakai @ untuk suppress error jika file tidak ada
-            }
-
-            // Simpan file baru
-            $file = $request->file('image');
-            $filename = time() . '_' . $file->getClientOriginalName();
-            $validated['image_path'] = 'uploads/' . $filename; // timpah dengan path yang digenerate
-
-            // Resize dan simpan dengan Intervention Image v3
-            $manager = new ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
-            $image = $manager->read($file);
-
-            // Hitung sisi panjang
-            $width = $image->width();
-            $height = $image->height();
-
-            // Hitung rasio
-            $ratio = max($width / 1024, $height / 1024);
-
-            if ($ratio > 1) {
-                // Jika lebih besar dari batas, resize berdasarkan rasio terbesar
-                $newWidth = (int) round($width / $ratio);
-                $newHeight = (int) round($height / $ratio);
-
-                $image->resize($newWidth, $newHeight, function ($constraint) {
-                    $constraint->aspectRatio();
-                    $constraint->upsize();
-                });
-            }
-
-            $image->save(public_path($validated['image_path']));
+            $validated['image_path'] = store_public_image_upload(
+                $request->file('image'),
+                'uploads',
+                $item->image_path
+            );
         } else if (empty($validated['image_path'])) {
             // Hapus file lama jika ada
             if ($item->image_path && file_exists(public_path($item->image_path))) {

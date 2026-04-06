@@ -143,39 +143,11 @@ class DemoPlotController extends Controller
 
         // Handle image upload jika ada
         if ($request->hasFile('image')) {
-            // Hapus file lama jika ada
-            if ($item->image_path && file_exists(public_path($item->image_path))) {
-                @unlink(public_path($item->image_path)); // pakai @ untuk suppress error jika file tidak ada
-            }
-
-            // Simpan file baru
-            $file = $request->file('image');
-            $filename = time() . '_' . $file->getClientOriginalName();
-            $validated['image_path'] = 'uploads/' . $filename; // timpah dengan path yang digenerate
-
-            // Resize dan simpan dengan Intervention Image v3
-            $manager = new ImageManager(new \Intervention\Image\Drivers\Gd\Driver());
-            $image = $manager->read($file);
-
-            // Hitung sisi panjang
-            $width = $image->width();
-            $height = $image->height();
-
-            // Hitung rasio
-            $ratio = max($width / 1024, $height / 1024);
-
-            if ($ratio > 1) {
-                // Jika lebih besar dari batas, resize berdasarkan rasio terbesar
-                $newWidth = (int) round($width / $ratio);
-                $newHeight = (int) round($height / $ratio);
-
-                $image->resize($newWidth, $newHeight, function ($constraint) {
-                    $constraint->aspectRatio();
-                    $constraint->upsize();
-                });
-            }
-
-            $image->save(public_path($validated['image_path']));
+            $validated['image_path'] = store_public_image_upload(
+                $request->file('image'),
+                'uploads',
+                $item->image_path
+            );
         } else if (empty($validated['image_path'])) {
             // Hapus file lama jika ada
             if ($item->image_path && file_exists(public_path($item->image_path))) {
@@ -191,9 +163,14 @@ class DemoPlotController extends Controller
                 ->withInput();
         }
 
-        $populationPcs = (int) $validated['population_pcs'];
-        $validated['population'] = $populationPcs * $bijiPerPcs;
-        unset($validated['population_pcs']);
+        // Calculate population from jumlah_tanam and db_germinasi
+        $jumlahTanam = (int) ($validated['jumlah_tanam'] ?? 0);
+        $dbGerminasi = (float) ($validated['db_germinasi'] ?? 0);
+        
+        if ($jumlahTanam > 0 && $dbGerminasi > 0) {
+            $totalSeeds = $jumlahTanam * $bijiPerPcs;
+            $validated['population'] = (int) round($totalSeeds * ($dbGerminasi / 100));
+        }
 
         $item->fill($validated);
         $item->save();
@@ -204,8 +181,22 @@ class DemoPlotController extends Controller
 
     public function delete($id)
     {
-        $item = DemoPlot::findOrFail($id);
-        $item->delete();
+        $item = DemoPlot::with(['visits:id,demo_plot_id,image_path'])->findOrFail($id);
+
+        DB::transaction(function () use ($item) {
+            foreach ($item->visits as $visit) {
+                if ($visit->image_path && file_exists(public_path($visit->image_path))) {
+                    @unlink(public_path($visit->image_path));
+                }
+            }
+
+            if ($item->image_path && file_exists(public_path($item->image_path))) {
+                @unlink(public_path($item->image_path));
+            }
+
+            $item->visits()->delete();
+            $item->delete();
+        });
 
         return response()->json([
             'message' => "Demo Plot #$item->id telah dihapus."
@@ -236,6 +227,18 @@ class DemoPlotController extends Controller
         }
 
         if ($request->get('format') == 'pdf-with-photo') {
+            // Increase memory limit untuk PDF dengan foto
+            ini_set('memory_limit', '512M');
+            set_time_limit(120);
+
+            $maxPhotoRows = 120;
+            $userFilter = (string) data_get($request->get('filter', []), 'user_id', 'all');
+            if ($userFilter === 'all') {
+                foreach ($items as $index => $item) {
+                    $item->pdf_disable_image = $index >= $maxPhotoRows;
+                }
+            }
+            
             //return view('export.demo-plot-list-w-photo-pdf', compact('items', 'title'));
             $pdf = Pdf::loadView('export.demo-plot-list-w-photo-pdf', compact('items', 'title'))
                 ->setPaper('A4', 'portrait');

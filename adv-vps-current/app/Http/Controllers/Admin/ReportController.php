@@ -99,6 +99,9 @@ class ReportController extends Controller
         $user_id = $request->get('user_id');
 
         if (isset($user_id)) {
+            ini_set('memory_limit', '512M');
+            set_time_limit(120);
+
             $current_user = Auth::user();
 
             $q = DemoPlot::select('demo_plots.*')
@@ -147,12 +150,25 @@ class ReportController extends Controller
                 ->orderBy('products.name', 'asc')
                 ->get();
 
+            $subtitles = [];
+            if ($user_id == 'all') {
+                $maxPhotoRows = max(20, min(300, (int) $request->get('max_photo_rows', 120)));
+                foreach ($items as $index => $item) {
+                    $item->pdf_disable_image = $index >= $maxPhotoRows;
+                }
+
+                if ($items->count() > $maxPhotoRows) {
+                    $subtitles[] = 'Catatan: Foto ditampilkan maksimal ' . $maxPhotoRows . ' baris pertama untuk menjaga performa export.';
+                }
+            }
+
             [$title, $user] = $this->resolveTitle('Laporan Foto Demo Plot', $user_id);
 
             return $this->generatePdfReport('report.demo-plot-with-photo', 'landscape', compact(
                 'items',
                 'title',
-                'user'
+                'user',
+                'subtitles'
             ));
         }
     }

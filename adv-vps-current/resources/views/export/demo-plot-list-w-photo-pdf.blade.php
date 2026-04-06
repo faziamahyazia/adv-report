@@ -15,24 +15,11 @@
       @forelse ($items as $index => $item)
         @php
           $src = null;
-          try {
-            foreach ([$item->latest_image_path ?? null, $item->image_path ?? null] as $path) {
-              if (!$path) {
-                continue;
-              }
-
-              $imagePath = public_path($path);
-              if (file_exists($imagePath) && is_readable($imagePath)) {
-                $imageData = @file_get_contents($imagePath);
-                if ($imageData !== false) {
-                  $src = 'data:image/png;base64,' . base64_encode($imageData);
-                  break;
-                }
-              }
-            }
-          } catch (\Exception $e) {
-            // Skip jika error membaca gambar
-            $src = null;
+          if (!($item->pdf_disable_image ?? false)) {
+            $src = public_image_file_uri($item->latest_image_path ?? null)
+              ?? public_image_file_uri($item->image_path ?? null)
+              ?? public_image_data_uri($item->latest_image_path ?? null)
+              ?? public_image_data_uri($item->image_path ?? null);
           }
 
         @endphp

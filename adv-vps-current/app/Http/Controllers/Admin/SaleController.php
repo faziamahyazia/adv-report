@@ -124,6 +124,10 @@ class SaleController extends Controller
         } elseif ($role === User::Role_Agronomist) {
             $agronomistId = Auth::id();
             $query->where(function ($q) use ($agronomistId) {
+                // Agronomist dapat melihat:
+                // 1. Penjualan distributor (semua)
+                // 2. Penjualan retailer yang dibuat oleh BS/FO yang berada di bawah agronomist ini
+                // 3. Data import target yang valid
                 $q->where('sale_type', Sale::Type_Distributor)
                     ->orWhereIn('sales.created_by_uid', function ($sub) use ($agronomistId) {
                         $sub->select('id')
@@ -290,13 +294,12 @@ class SaleController extends Controller
         $amountExpr = 'sale_items.quantity * COALESCE(NULLIF(sale_items.price, 0), products.price_1, products.price_2, 0)';
 
         // Exclude sales where computed total = 0 (e.g. old imported data with qty=0)
+        // NOTE: We only exclude if quantity is 0, not if price is 0, to ensure BS sales are counted
         $q->whereExists(function ($sub) {
             $sub->selectRaw('1')
                 ->from('sale_items as si')
-                ->leftJoin('products as p', 'p.id', '=', 'si.product_id')
                 ->whereColumn('si.sale_id', 'sales.id')
-                ->groupBy('si.sale_id')
-                ->havingRaw('COALESCE(SUM(si.quantity * COALESCE(NULLIF(si.price, 0), p.price_1, p.price_2, 0)), 0) > 0');
+                ->where('si.quantity', '>', 0);
         });
 
         // Base total dari query aktif (FY/filter/role scope tetap terpakai)
@@ -315,6 +318,7 @@ class SaleController extends Controller
 
         // Agronomist/Admin: total card harus exclude transaksi yang benar-benar dibuat BS/FO.
         // Jangan kurangi seluruh sale_type=retailer karena data historis impor juga bisa bertipe retailer.
+        // BS users (isBs = true) will see their own totals including ALL their sales (pending + released).
         if (!$isBs) {
             $bsAmount = (float) ((clone $q)
                 ->whereIn('sales.created_by_uid', function ($sub) {
