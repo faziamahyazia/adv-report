@@ -1,9 +1,10 @@
 <script setup>
+import axios from "axios";
 import { computed, onMounted, reactive, ref } from "vue";
 import { router, usePage } from "@inertiajs/vue3";
 import { handleDelete, handleFetchItems } from "@/helpers/client-req-handler";
 import { getQueryParams } from "@/helpers/utils";
-import { useQuasar } from "quasar";
+import { Notify, useQuasar } from "quasar";
 import dayjs from "dayjs";
 import useTableHeight from "@/composables/useTableHeight";
 
@@ -76,6 +77,33 @@ const fetchItems = (props = null) =>
 
 const onRowClicked = (row) =>
   router.get(route("admin.demo-plot-visit.detail", { id: row.id }));
+
+const canSetCover = computed(() => {
+  const role = page.props.auth?.user?.role;
+  if (role === 'admin') return true;
+  if (role === 'bs') return Number(page.props.auth?.user?.id) === Number(page.props.data.user_id);
+  if (role === 'agronomist') return Number(page.props.auth?.user?.id) === Number(page.props.data.user?.parent_id);
+  return false;
+});
+
+const setAsCoverPhoto = async (row) => {
+  if (!row?.image_path || !canSetCover.value) return;
+
+  try {
+    const response = await axios.post(route('admin.demo-plot.cover-photo', { id: page.props.data.id }), {
+      source: 'visit',
+      visit_id: row.id,
+    });
+
+    Notify.create({ color: 'positive', message: response.data?.message || 'Foto depan berhasil diperbarui.' });
+    router.reload({ only: ['data'] });
+  } catch (error) {
+    Notify.create({
+      color: 'negative',
+      message: error?.response?.data?.message || error?.response?.data?.errors?.visit_id?.[0] || 'Gagal memperbarui foto depan.',
+    });
+  }
+};
 
 const computedColumns = computed(() =>
   $q.screen.gt.sm
@@ -161,7 +189,7 @@ const computedColumns = computed(() =>
             </div>
             <div v-else>
               <template v-if="$q.screen.lt.md">
-                <q-icon name="history" />
+                <q-icon class="mobile-demo-icon" name="history" />
               </template>
               {{ $dayjs(props.row.visit_date).format("D MMMM YYYY") }}
               <div class="text-caption text-italic text-grey-8">
@@ -178,7 +206,7 @@ const computedColumns = computed(() =>
                 class="rounded-borders bg-light-green-2"
               />
               <div class="text-subtitle2">
-                <q-icon name="person" /> {{ props.row.user.name }} -
+                <q-icon class="mobile-demo-icon" name="person" /> {{ props.row.user.name }} -
                 {{ props.row.user.username }}
               </div>
               <div>
@@ -196,7 +224,7 @@ const computedColumns = computed(() =>
                   overflow-wrap: break-word;
                 "
               >
-                <q-icon name="notes" /> {{ props.row.notes }}
+                <q-icon class="mobile-demo-icon" name="notes" /> {{ props.row.notes }}
               </div>
             </template>
           </q-td>
@@ -246,6 +274,18 @@ const computedColumns = computed(() =>
                   transition-hide="scale"
                 >
                   <q-list style="width: 200px">
+                    <q-item
+                      v-if="canSetCover && props.row.image_path"
+                      clickable
+                      v-ripple
+                      v-close-popup
+                      @click.stop="setAsCoverPhoto(props.row)"
+                    >
+                      <q-item-section avatar>
+                        <q-icon name="image" />
+                      </q-item-section>
+                      <q-item-section>Jadikan Foto Depan</q-item-section>
+                    </q-item>
                     <q-item
                       v-if="$can('admin.demo-plot-visit.edit')"
                       clickable

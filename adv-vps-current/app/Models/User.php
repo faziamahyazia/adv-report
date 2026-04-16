@@ -96,4 +96,9 @@ class User extends Authenticatable
     {
         return $this->hasMany(User::class, 'parent_id');
     }
+
+    public function districts()
+    {
+        return $this->belongsToMany(District::class, 'user_districts', 'user_id', 'district_id');
+    }
 }

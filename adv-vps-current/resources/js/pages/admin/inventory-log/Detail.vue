@@ -13,48 +13,121 @@ const formatKg = (value) =>
     maximumFractionDigits: 3,
   }).format(Number(value || 0));
 
+const normalizeUnit = (value) => String(value || "").trim().toLowerCase();
+
+const convertToPrimaryFromUnit = (product, qty, unit) => {
+  const numericQty = Number(qty || 0);
+  if (numericQty <= 0) return 0;
+
+  const uom1 = normalizeUnit(product?.uom_1 || product?.unit);
+  const uom2 = normalizeUnit(product?.uom_2);
+  const srcUnit = normalizeUnit(unit);
+  const weightGram = Number(product?.weight || 0);
+
+  if (!srcUnit || !uom1 || srcUnit === uom1) return numericQty;
+
+  if (srcUnit === uom2 && weightGram > 0) {
+    if (uom1 === "kg" && uom2 === "pcs") {
+      return Number(((numericQty * weightGram) / 1000).toFixed(6));
+    }
+
+    if (uom1 === "pcs" && uom2 === "kg") {
+      return Number(((numericQty * 1000) / weightGram).toFixed(6));
+    }
+  }
+
+  return numericQty;
+};
+
+const getDisplayCustomerName = (item) => {
+  if (item?.sale?.retailer?.name && String(item?.notes || "").startsWith("[SALE_SYNC")) {
+    return item.sale.retailer.name;
+  }
+
+  return item?.customer?.name || "-";
+};
+
+const getSaleItemForRow = (item) => {
+  const saleItems = item?.sale?.items || [];
+  return saleItems.find((saleItem) => Number(saleItem.product_id) === Number(item?.product_id)) || null;
+};
+
 const formatInventoryQuantity = (item) => {
+  const saleItem = getSaleItemForRow(item);
   const product = item?.product || {};
-  const uom1 = String(product.uom_1 || "pcs").toLowerCase();
-  const uom2 = String(product.uom_2 || "kg").toLowerCase();
+  const uom1 = normalizeUnit(product.uom_1 || product.unit || "kg");
+  const uom2 = normalizeUnit(product.uom_2 || (uom1 === "kg" ? "pcs" : "kg"));
   const weight = parseFloat(product.weight || 0);
 
   let primaryValue, primaryUOM;
   let secondaryValue, secondaryUOM;
+  const rowPrimaryQty = Number(item?.quantity || 0);
+  const movementPrimaryQty = Math.abs(Number(item?.movement_quantity || 0));
+  const salePrimaryQty = saleItem
+    ? convertToPrimaryFromUnit(product, saleItem.quantity, saleItem.unit)
+    : 0;
 
-  // Determine which field is primary based on uom_1
+  const saleBaseQuantity = Number(saleItem?.base_quantity || 0);
+  const rowBaseQuantity = Number(item?.base_quantity || 0);
+  const convertedBaseQuantity = (() => {
+    const primaryCandidate = rowPrimaryQty > 0
+      ? rowPrimaryQty
+      : (movementPrimaryQty > 0 ? movementPrimaryQty : salePrimaryQty);
+
+    if (primaryCandidate <= 0 || weight <= 0) return 0;
+
+    if (uom1 === "kg" && uom2 === "pcs") {
+      return Number(((primaryCandidate * 1000) / weight).toFixed(2));
+    }
+
+    if (uom1 === "pcs" && uom2 === "kg") {
+      return Number(primaryCandidate.toFixed(2));
+    }
+
+    return 0;
+  })();
+
+  const baseQuantityValue = saleBaseQuantity > 0
+    ? saleBaseQuantity
+    : (rowBaseQuantity > 0 ? rowBaseQuantity : convertedBaseQuantity);
+
+  const quantityValue = rowPrimaryQty > 0
+    ? rowPrimaryQty
+    : (movementPrimaryQty > 0
+      ? movementPrimaryQty
+      : (salePrimaryQty > 0
+        ? salePrimaryQty
+        : (uom1 === "kg" && uom2 === "pcs" && baseQuantityValue > 0 && weight > 0
+          ? Number(((baseQuantityValue * weight) / 1000).toFixed(3))
+          : 0)));
+
   if (uom1 === "pcs") {
-    // Primary: base_quantity (pcs), Secondary: quantity (kg)
     primaryUOM = uom1;
     secondaryUOM = uom2;
-    primaryValue = formatNumber(item?.base_quantity || 0);
+    primaryValue = formatNumber(baseQuantityValue);
     
-    // Secondary calculated from base_quantity
-    if (weight > 0 && item?.base_quantity) {
-      const calc = (item.base_quantity * weight) / 1000;
+    if (weight > 0 && baseQuantityValue) {
+      const calc = (baseQuantityValue * weight) / 1000;
       secondaryValue = formatKg(calc);
     } else {
-      secondaryValue = formatKg(item?.quantity || 0);
+      secondaryValue = formatKg(quantityValue);
     }
   } else if (uom1 === "kg") {
-    // Primary: quantity (kg), Secondary: base_quantity (pcs)
     primaryUOM = uom1;
     secondaryUOM = uom2;
-    primaryValue = formatKg(item?.quantity || 0);
+    primaryValue = formatKg(quantityValue);
     
-    // Secondary calculated from quantity
-    if (weight > 0 && item?.quantity) {
-      const calc = (item.quantity * 1000) / weight;
+    if (weight > 0 && quantityValue) {
+      const calc = (quantityValue * 1000) / weight;
       secondaryValue = formatNumber(calc);
     } else {
-      secondaryValue = formatNumber(item?.base_quantity || 0);
+      secondaryValue = formatNumber(baseQuantityValue);
     }
   } else {
-    // Default fallback
     primaryUOM = uom1;
     secondaryUOM = uom2;
-    primaryValue = formatNumber(item?.base_quantity || 0);
-    secondaryValue = formatKg(item?.quantity || 0);
+    primaryValue = formatNumber(baseQuantityValue);
+    secondaryValue = formatKg(quantityValue);
   }
 
   return `${primaryValue} ${primaryUOM} / ${secondaryValue} ${secondaryUOM}`;

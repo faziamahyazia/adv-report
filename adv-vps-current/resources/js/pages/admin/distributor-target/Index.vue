@@ -38,6 +38,11 @@ const filter = reactive(
 const showFilter = ref(storage.get("show-filter", true));
 const loading = ref(false);
 const rows = ref([]);
+const breakdownDialog = ref(false);
+const breakdownLoading = ref(false);
+const breakdownTitle = ref("Breakdown Bulanan");
+const breakdownSubtitle = ref("");
+const breakdownRows = ref([]);
 const summary = reactive({
   total_target: 0,
   total_actual: 0,
@@ -120,6 +125,15 @@ const columns = computed(() => {
   return baseColumns;
 });
 
+const breakdownColumns = [
+  { name: "month_label", label: "Bulan", field: "month_label", align: "left" },
+  { name: "target_qty", label: "Target Qty", field: "target_qty", align: "right" },
+  { name: "actual_qty", label: "Realisasi Qty", field: "actual_qty", align: "right" },
+  { name: "target_value", label: "Nilai Target (Rp)", field: "target_value", align: "right" },
+  { name: "actual_value", label: "Nilai Realisasi (Rp)", field: "actual_value", align: "right" },
+  { name: "achievement", label: "Pencapaian", field: "achievement", align: "center" },
+];
+
 async function fetchData() {
   loading.value = true;
   try {
@@ -194,6 +208,33 @@ function deleteRow(row) {
       Notify.create({ type: "negative", message: error?.response?.data?.message || "Gagal menghapus target distributor." });
     }
   });
+}
+
+async function openBreakdown(row) {
+  breakdownDialog.value = true;
+  breakdownLoading.value = true;
+  breakdownRows.value = [];
+  breakdownTitle.value = "Breakdown Bulanan";
+  breakdownSubtitle.value = `${row.distributor_name} - ${row.product_name}`;
+
+  try {
+    const { data } = await axios.get(route("admin.distributor-target.breakdown", row.id));
+    breakdownTitle.value = data.title || "Breakdown Bulanan";
+    breakdownSubtitle.value = data.subtitle || breakdownSubtitle.value;
+    breakdownRows.value = data.rows || [];
+  } catch (error) {
+    Notify.create({
+      type: "negative",
+      message: error?.response?.data?.message || "Gagal memuat breakdown bulanan.",
+    });
+    breakdownDialog.value = false;
+  } finally {
+    breakdownLoading.value = false;
+  }
+}
+
+function onRowClick(_evt, row) {
+  openBreakdown(row);
 }
 
 onMounted(fetchData);
@@ -308,7 +349,7 @@ watch(showFilter, () => storage.set("show-filter", showFilter.value));
         </div>
       </div>
 
-      <q-table flat bordered square dense row-key="id" :rows="rows" :columns="columns" :loading="loading" :pagination="{ rowsPerPage: 25 }">
+      <q-table flat bordered square dense row-key="id" :rows="rows" :columns="columns" :loading="loading" :pagination="{ rowsPerPage: 25 }" @row-click="onRowClick">
         <template #loading>
           <q-inner-loading showing color="primary" />
         </template>
@@ -347,12 +388,57 @@ watch(showFilter, () => storage.set("show-filter", showFilter.value));
 
         <template #body-cell-action="slotProps">
           <q-td :props="slotProps" class="text-right no-wrap">
-            <q-btn v-if="$can('admin.distributor-target.edit')" flat dense round icon="edit" color="primary" @click="editRow(slotProps.row)" />
-            <q-btn v-if="$can('admin.distributor-target.delete')" flat dense round icon="delete" color="negative" @click="deleteRow(slotProps.row)" />
+            <q-btn v-if="$can('admin.distributor-target.edit')" flat dense round icon="edit" color="primary" @click.stop="editRow(slotProps.row)" />
+            <q-btn v-if="$can('admin.distributor-target.delete')" flat dense round icon="delete" color="negative" @click.stop="deleteRow(slotProps.row)" />
           </q-td>
         </template>
       </q-table>
     </div>
+
+    <q-dialog v-model="breakdownDialog" :maximized="$q.screen.lt.sm">
+      <q-card :style="$q.screen.gt.xs ? 'width: 900px; max-width: 96vw' : 'width: 100%'">
+        <q-card-section class="row items-center q-pb-none">
+          <div>
+            <div class="text-subtitle1 text-bold">{{ breakdownTitle }}</div>
+            <div class="text-caption text-grey-7">{{ breakdownSubtitle }}</div>
+          </div>
+          <q-space />
+          <q-btn icon="close" flat round dense @click="breakdownDialog = false" />
+        </q-card-section>
+
+        <q-card-section>
+          <q-table
+            flat
+            bordered
+            dense
+            row-key="month_key"
+            :rows="breakdownRows"
+            :columns="breakdownColumns"
+            :loading="breakdownLoading"
+            :pagination="{ rowsPerPage: 12 }"
+            hide-bottom
+          >
+            <template #body-cell-target_qty="slotProps">
+              <q-td :props="slotProps" class="text-right">{{ formatQty(slotProps.row.target_qty) }}</q-td>
+            </template>
+            <template #body-cell-actual_qty="slotProps">
+              <q-td :props="slotProps" class="text-right">{{ formatQty(slotProps.row.actual_qty) }}</q-td>
+            </template>
+            <template #body-cell-target_value="slotProps">
+              <q-td :props="slotProps" class="text-right">Rp {{ formatCurrency(slotProps.row.target_value) }}</q-td>
+            </template>
+            <template #body-cell-actual_value="slotProps">
+              <q-td :props="slotProps" class="text-right">Rp {{ formatCurrency(slotProps.row.actual_value) }}</q-td>
+            </template>
+            <template #body-cell-achievement="slotProps">
+              <q-td :props="slotProps" class="text-center">
+                <q-badge :color="achievementColor(slotProps.row.achievement)">{{ slotProps.row.achievement }}%</q-badge>
+              </q-td>
+            </template>
+          </q-table>
+        </q-card-section>
+      </q-card>
+    </q-dialog>
 
     <!-- Import Dialog -->
     <q-dialog v-model="importDialog" :maximized="$q.screen.lt.sm">

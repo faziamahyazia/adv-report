@@ -1,0 +1,1 @@
+import{r as s,w as r,n as c,c as f}from"./vendor1-e39yyhVQ.js";function h(a,i=67){const t=s(0);return r(()=>a.value,e=>{e?c(()=>{t.value=e.$el?e.$el.offsetHeight:e.offsetHeight}):t.value=0}),f(()=>`calc(100vh - ${i}px - ${t.value}px)`)}export{h as u};

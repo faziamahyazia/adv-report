@@ -25,11 +25,11 @@ const props = defineProps({
   },
   bgColor: {
     type: String,
-    default: "#888",
+    default: "#0a3b82",
   },
   sideColor: {
     type: String,
-    default: "#666",
+    default: "#132b50",
   },
   to: {
     type: String,
@@ -47,9 +47,9 @@ const isAchieved = computed(() => {
 });
 
 // Warna hijau jika tercapai, merah jika belum
-const finalBgColor = computed(() => (isAchieved.value ? "#388E3C" : "#D32F2F")); // hijau / merah
+const finalBgColor = computed(() => (isAchieved.value ? "#00b140" : "#e31c4b")); // hijau / merah brand
 const finalSideColor = computed(() =>
-  isAchieved.value ? "#2E7D32" : "#C62828"
+  isAchieved.value ? "#008a3d" : "#a10f56"
 ); // lebih gelap
 
 function handleClick() {

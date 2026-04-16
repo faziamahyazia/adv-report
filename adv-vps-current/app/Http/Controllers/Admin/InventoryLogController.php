@@ -11,6 +11,7 @@ use App\Models\Sale;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
@@ -65,6 +66,42 @@ class InventoryLogController extends Controller
         }
 
         return $qty;
+    }
+
+    private function formatExportQty(float $value): string
+    {
+        // Format desimal dengan koma tanpa pemisah ribuan.
+        // Hanya hilangkan akhiran ",000" sesuai kebutuhan user.
+        $formatted = number_format((float) $value, 3, ',', '');
+
+        if (str_ends_with($formatted, ',000')) {
+            return substr($formatted, 0, -4);
+        }
+
+        return $formatted;
+    }
+
+    private function resolveExportQuantity(InventoryLog $item, string $qtyUnit): array
+    {
+        $unit = $this->normalizeUnit($qtyUnit);
+        $product = $item->product;
+        $weightGram = (float) ($product->weight ?? 0);
+
+        $qtyKg = (float) ($item->quantity ?? 0);
+        $qtyPcs = (float) ($item->base_quantity ?? 0);
+
+        if ($unit === 'pcs') {
+            if ($qtyPcs <= 0 && $weightGram > 0 && $qtyKg > 0) {
+                $qtyPcs = ($qtyKg * 1000) / $weightGram;
+            }
+            return [round($qtyPcs, 3), 'pcs'];
+        }
+
+        if ($qtyKg <= 0 && $weightGram > 0 && $qtyPcs > 0) {
+            $qtyKg = ($qtyPcs * $weightGram) / 1000;
+        }
+
+        return [round($qtyKg, 3), 'kg'];
     }
 
     private function applyInventoryRoleScope($q, User $currentUser): void
@@ -122,6 +159,13 @@ class InventoryLogController extends Controller
 
     private function applyInventoryFilters($q, array $filter, ?User $currentUser = null): void
     {
+        // Untuk transaksi sale retailer, tampilkan log client tujuan saja.
+        // Baris sinkron stok distributor per-sale ([DIST_STOCK_SYNC#...]) disembunyikan dari listing.
+        $q->where(function ($query) {
+            $query->whereNull('reference_sale_id')
+                ->orWhere('notes', 'not like', '[DIST_STOCK_SYNC#%');
+        });
+
         if (!empty($filter['search'])) {
             $search = '%' . $filter['search'] . '%';
 
@@ -228,7 +272,7 @@ class InventoryLogController extends Controller
 
     public function detail($id = 0)
     {
-        $item = InventoryLog::with(['product', 'product.category', 'user', 'customer', 'created_by', 'updated_by'])->findOrFail($id);
+        $item = InventoryLog::with(['product', 'product.category', 'user', 'customer', 'sale.retailer', 'sale.items.product', 'created_by', 'updated_by'])->findOrFail($id);
         // $this->authorize('view', $item);
         return inertia('admin/inventory-log/Detail', [
             'data' => $item,
@@ -243,7 +287,7 @@ class InventoryLogController extends Controller
         $orderType = $request->get('order_type', 'desc');
         $filter = $request->get('filter', []);
 
-        $q = InventoryLog::with(['product', 'product.category', 'user', 'customer']);
+        $q = InventoryLog::with(['product', 'product.category', 'user', 'customer', 'sale.retailer', 'sale.items.product']);
         $this->applyInventoryRoleScope($q, $current_user);
         $this->applyInventoryFilters($q, $filter, $current_user);
 
@@ -314,26 +358,30 @@ class InventoryLogController extends Controller
 
         $product = Product::findOrFail($validated['product_id']);
         
-        // Recalculate quantity based on base_quantity and product weight
-        // This ensures data consistency with master product data
-        $baseQty = (float) $validated['base_quantity'];
+        // Normalisasi simpanan agar konsisten:
+        // - quantity selalu menyimpan uom_1 (primary unit)
+        // - base_quantity selalu menyimpan pcs (jika ada konversi kg<->pcs)
+        $primaryQty = (float) $validated['base_quantity'];
         $weightGram = (float) ($product->weight ?? 0);
-        
-        // Calculate based on UOM1 and UOM2
         $uom1 = $this->normalizeUnit($product->uom_1);
         $uom2 = $this->normalizeUnit($product->uom_2);
-        
-        if ($weightGram > 0 && $uom2 !== '' && $uom1 !== '') {
-            // Common case: base uom_1=pcs, uom_2=kg
-            if ($uom1 === 'pcs' && $uom2 === 'kg') {
-                // quantity(kg) = base_quantity(pcs) * weight(gram) / 1000
-                $validated['quantity'] = round(($baseQty * $weightGram) / 1000, 3);
-            }
-            // Opposite case: base uom_1=kg, uom_2=pcs
-            elseif ($uom1 === 'kg' && $uom2 === 'pcs') {
-                // quantity(pcs) = base_quantity(kg) * 1000 / weight(gram)
-                $validated['quantity'] = round(($baseQty * 1000) / $weightGram, 3);
-            }
+
+        if ($uom1 === 'kg' && $uom2 === 'pcs') {
+            // Input primary di form adalah kg.
+            $validated['quantity'] = round($primaryQty, 3);
+            $validated['base_quantity'] = $weightGram > 0
+                ? (int) round(($primaryQty * 1000) / $weightGram)
+                : (int) round($primaryQty);
+        } elseif ($uom1 === 'pcs' && $uom2 === 'kg') {
+            // Input primary di form adalah pcs.
+            $validated['base_quantity'] = (int) round($primaryQty);
+            $validated['quantity'] = $weightGram > 0
+                ? round(($validated['base_quantity'] * $weightGram) / 1000, 3)
+                : round($primaryQty, 3);
+        } else {
+            // Fallback produk tanpa pasangan konversi.
+            $validated['quantity'] = round($primaryQty, 3);
+            $validated['base_quantity'] = (int) round($primaryQty);
         }
 
         $item = $request->id ? InventoryLog::findOrFail($request->id) : new InventoryLog();
@@ -345,6 +393,62 @@ class InventoryLogController extends Controller
 
         return redirect(route('admin.inventory-log.index'))
             ->with('success', "Log inventori #$item->id telah disimpan.");
+    }
+
+    public function updateStock(Request $request, int $id)
+    {
+        $validated = $request->validate([
+            'check_date' => ['required', 'date'],
+            'remaining_stock' => ['required', 'numeric', 'min:0', 'max:999999'],
+            'remaining_stock_unit' => ['required', 'string', 'max:20'],
+        ], [
+            'check_date.required' => 'Tanggal update wajib diisi.',
+            'remaining_stock.required' => 'Stok tersisa wajib diisi.',
+            'remaining_stock_unit.required' => 'Satuan stok wajib dipilih.',
+        ]);
+
+        $currentUser = Auth::user();
+        $q = InventoryLog::query();
+        $this->applyInventoryRoleScope($q, $currentUser);
+        $item = $q->findOrFail($id);
+
+        $this->authorize('update', $item);
+
+        $product = Product::findOrFail((int) $item->product_id);
+        $uom1 = $this->normalizeUnit($product->uom_1);
+        $uom2 = $this->normalizeUnit($product->uom_2);
+        $selectedUnit = $this->normalizeUnit($validated['remaining_stock_unit']);
+        if ($selectedUnit !== '' && !in_array($selectedUnit, array_filter([$uom1, $uom2]), true)) {
+            throw ValidationException::withMessages([
+                'remaining_stock_unit' => 'Satuan stok tidak valid untuk produk ini.',
+            ]);
+        }
+
+        $baseQty = $this->convertToBaseQty($product, (float) $validated['remaining_stock'], $selectedUnit ?: $uom1);
+        $weightGram = (float) ($product->weight ?? 0);
+
+        if ($uom1 === 'kg' && $uom2 === 'pcs') {
+            $item->quantity = round($baseQty, 3);
+            $item->base_quantity = $weightGram > 0
+                ? (int) round(($baseQty * 1000) / $weightGram)
+                : (int) round($baseQty);
+        } elseif ($uom1 === 'pcs' && $uom2 === 'kg') {
+            $item->base_quantity = (int) round($baseQty);
+            $item->quantity = $weightGram > 0
+                ? round(($item->base_quantity * $weightGram) / 1000, 3)
+                : round($baseQty, 3);
+        } else {
+            $item->quantity = round($baseQty, 3);
+            $item->base_quantity = (int) round($baseQty);
+        }
+
+        $item->check_date = $validated['check_date'];
+        $item->save();
+
+        return response()->json([
+            'message' => "Stok log inventori #{$item->id} berhasil diperbarui.",
+            'updated_datetime' => optional($item->updated_datetime)->toDateTimeString(),
+        ]);
     }
 
     public function delete($id)
@@ -399,41 +503,75 @@ class InventoryLogController extends Controller
      */
     public function export(Request $request)
     {
-        $items = InventoryLog::orderBy('name', 'asc')->get();
+        $currentUser = Auth::user();
+        $filter = (array) $request->get('filter', []);
+        $format = strtolower((string) $request->get('format', 'pdf'));
+        $qtyUnit = strtolower((string) $request->get('qty_unit', 'kg'));
+        if (!in_array($qtyUnit, ['kg', 'pcs'], true)) {
+            $qtyUnit = 'kg';
+        }
+
+        $q = InventoryLog::with(['product', 'product.category', 'user', 'customer']);
+        $this->applyInventoryRoleScope($q, $currentUser);
+        $this->applyInventoryFilters($q, $filter, $currentUser);
+
+        $items = $q->orderBy('check_date', 'desc')
+            ->orderBy('id', 'desc')
+            ->get();
+
+        foreach ($items as $item) {
+            [$qtyValue, $qtyLabel] = $this->resolveExportQuantity($item, $qtyUnit);
+            $item->export_qty_value = $qtyValue;
+            $item->export_qty_unit = $qtyLabel;
+            $item->export_qty_text = $this->formatExportQty($qtyValue);
+        }
 
         $title = 'Daftar Log Inventory';
-        $filename = $title . ' - ' . env('APP_NAME') . Carbon::now()->format('dmY_His');
+        $filename = 'inventory-log-' . Carbon::now()->format('Ymd_His');
 
-        if ($request->get('format') == 'pdf') {
-            $pdf = Pdf::loadView('export.inventory-log-list-pdf', compact('items', 'title'))
+        if ($format === 'pdf') {
+            $pdf = Pdf::loadView('export.inventory-log-list-pdf', compact('items', 'title', 'qtyUnit'))
                 ->setPaper('a4', 'landscape');
             return $pdf->download($filename . '.pdf');
         }
 
-        if ($request->get('format') == 'excel') {
+        if ($format === 'excel') {
             $spreadsheet = new Spreadsheet();
             $sheet = $spreadsheet->getActiveSheet();
+            $sheet->setTitle('Inventory Log');
 
-            // Tambahkan header
+            // Header
             $sheet->setCellValue('A1', 'No');
-            $sheet->setCellValue('B1', 'Kategori');
-            $sheet->setCellValue('C1', 'Nama Varietas');
-            $sheet->setCellValue('D1', 'Harga Distributor (Rp / sat)');
-            $sheet->setCellValue('E1', 'Harga (Rp / sat)');
-            $sheet->setCellValue('F1', 'Status');
-            $sheet->setCellValue('G1', 'Catatan');
+            $sheet->setCellValue('B1', 'Tanggal Cek');
+            $sheet->setCellValue('C1', 'Checker');
+            $sheet->setCellValue('D1', 'Area');
+            $sheet->setCellValue('E1', 'Client');
+            $sheet->setCellValue('F1', 'Crops');
+            $sheet->setCellValue('G1', 'Varietas');
+            $sheet->setCellValue('H1', 'LOT Package');
+            $sheet->setCellValue('I1', 'Quantity (' . strtoupper($qtyUnit) . ')');
+            $sheet->setCellValue('J1', 'Catatan');
 
-            // Tambahkan data ke Excel
+            $sheet->getStyle('A1:J1')->getFont()->setBold(true);
+
+            // Data
             $row = 2;
             foreach ($items as $num => $item) {
                 $sheet->setCellValue('A' . $row, $num + 1);
-                $sheet->setCellValue('B' . $row, $item->category ? $item->category->name : '');
-                $sheet->setCellValue('C' . $row, $item->name);
-                $sheet->setCellValue('D' . $row, "$item->price_1 / $item->uom_1");
-                $sheet->setCellValue('E' . $row, "$item->price_2 / $item->uom_2");
-                $sheet->setCellValue('F' . $row, $item->active ? 'Aktif' : 'Tidak Aktif');
-                $sheet->setCellValue('G' . $row, $item->notes);
+                $sheet->setCellValue('B' . $row, optional($item->check_date)->format('d-m-Y'));
+                $sheet->setCellValue('C' . $row, $item->user->name ?? '-');
+                $sheet->setCellValue('D' . $row, $item->area ?? '-');
+                $sheet->setCellValue('E' . $row, $item->customer->name ?? '-');
+                $sheet->setCellValue('F' . $row, $item->product->category->name ?? '-');
+                $sheet->setCellValue('G' . $row, $item->product->name ?? '-');
+                $sheet->setCellValue('H' . $row, $item->lot_package ?? '-');
+                $sheet->setCellValue('I' . $row, $item->export_qty_text ?? '-');
+                $sheet->setCellValue('J' . $row, $item->notes ?? '-');
                 $row++;
+            }
+
+            foreach (range('A', 'J') as $column) {
+                $sheet->getColumnDimension($column)->setAutoSize(true);
             }
 
             // Kirim ke memori tanpa menyimpan file
@@ -460,5 +598,30 @@ class InventoryLogController extends Controller
             $customersQuery->where('assigned_user_id', $currentUser->id);
         }
         return $customersQuery->orderBy('name', 'asc')->get(['id', 'name']);
+    }
+
+    public function customersByUser(Request $request)
+    {
+        $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+        ]);
+
+        $userId = (int) $request->integer('user_id');
+
+        // Ambil customers yang terkait dengan user ini
+        // Either dibuat oleh user atau di-assign ke user
+        $customers = Customer::where(function ($q) use ($userId) {
+            $q->where('created_by_uid', $userId)
+              ->orWhere('assigned_user_id', $userId);
+        })
+            ->orderBy('name', 'asc')
+            ->get(['id', 'name']);
+
+        return response()->json([
+            'rows' => $customers->map(fn($c) => [
+                'value' => (int) $c->id,
+                'label' => $c->name,
+            ])->values(),
+        ]);
     }
 }

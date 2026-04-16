@@ -341,7 +341,7 @@ watch(showFilter, () => storage.set("show-filter", showFilter.value), {
         </div>
       </q-toolbar>
     </template>
-    <div class="q-pa-sm">
+    <div class="q-pa-sm activity-table-wrap">
       <q-table
         ref="tableRef"
         :style="{ height: tableHeight }"
@@ -352,6 +352,8 @@ watch(showFilter, () => storage.set("show-filter", showFilter.value), {
         color="primary"
         row-key="id"
         virtual-scroll
+        :grid="$q.screen.lt.md"
+        :hide-header="$q.screen.lt.md"
         v-model:pagination="pagination"
         :filter="filter.search"
         :loading="loading"
@@ -373,6 +375,155 @@ watch(showFilter, () => storage.set("show-filter", showFilter.value), {
           </div>
         </template>
 
+        <template v-slot:item="props">
+          <div class="q-pa-xs col-12">
+            <q-card
+              flat
+              bordered
+              class="mobile-realization-card"
+              @click="onRowClicked(props.row)"
+            >
+              <q-img
+                v-if="props.row.image_path"
+                :src="`/${props.row.image_path}`"
+                class="mobile-realization-image"
+                spinner-color="grey"
+                fit="cover"
+              />
+
+              <q-card-section class="q-pa-sm">
+                <div class="mobile-line"><q-icon name="edit_calendar" class="q-mr-xs" />{{ $dayjs(props.row.date).format("DD MMMM YYYY") }}</div>
+                <div class="mobile-line"><q-icon name="overview" class="q-mr-xs" />{{ props.row.type.name }}</div>
+                <div class="mobile-line"><q-icon name="person" class="q-mr-xs" />{{ props.row.user.name }} ({{ props.row.user.username }})</div>
+                <div class="mobile-line" v-if="props.row.product"><q-icon name="potted_plant" class="q-mr-xs" />{{ props.row.product.name }}</div>
+                <div class="mobile-line"><q-icon name="home_pin" class="q-mr-xs" />{{ props.row.location }}</div>
+                <div class="mobile-line"><q-icon name="sell" class="q-mr-xs" />Rp. {{ formatNumber(props.row.cost) }}</div>
+                <div class="mobile-line">
+                  <template v-if="props.row.status == 'approved'">
+                    <q-badge label="Disetujui" color="green" />
+                  </template>
+                  <template v-else-if="props.row.status == 'rejected'">
+                    <q-badge label="Ditolak" color="red" />
+                  </template>
+                  <template v-else>
+                    <q-badge label="Belum Direspon" color="grey" />
+                  </template>
+                </div>
+                <div class="mobile-line" v-if="props.row.notes">
+                  <q-icon name="notes" class="q-mr-xs" />{{ props.row.notes }}
+                </div>
+              </q-card-section>
+
+              <q-separator />
+              <q-card-actions align="right" class="q-px-xs q-py-xs" @click.stop>
+                <q-btn
+                  icon="more_vert"
+                  dense
+                  flat
+                >
+                  <q-menu
+                    anchor="bottom right"
+                    self="top right"
+                    transition-show="scale"
+                    transition-hide="scale"
+                  >
+                    <q-list style="width: 200px">
+                      <q-item
+                        v-if="
+                          props.row.status == 'not_responded' &&
+                          $can('admin.activity.respond')
+                        "
+                        clickable
+                        v-ripple
+                        v-close-popup
+                        @click.stop="responActivity(props.row, 'approve')"
+                      >
+                        <q-item-section avatar>
+                          <q-icon name="check" />
+                        </q-item-section>
+                        <q-item-section>Setujui</q-item-section>
+                      </q-item>
+                      <q-item
+                        v-if="
+                          props.row.status == 'not_responded' &&
+                          $can('admin.activity.respond')
+                        "
+                        clickable
+                        v-ripple
+                        v-close-popup
+                        @click.stop="responActivity(props.row, 'reject')"
+                      >
+                        <q-item-section avatar>
+                          <q-icon name="close" />
+                        </q-item-section>
+                        <q-item-section>Tolak</q-item-section>
+                      </q-item>
+                      <q-item
+                        v-if="
+                          props.row.status != 'not_responded' &&
+                          $can('admin.activity.respond')
+                        "
+                        clickable
+                        v-ripple
+                        v-close-popup
+                        @click.stop="responActivity(props.row, 'reset')"
+                      >
+                        <q-item-section avatar>
+                          <q-icon name="restart_alt" />
+                        </q-item-section>
+                        <q-item-section>Atur Ulang</q-item-section>
+                      </q-item>
+                      <q-separator />
+                      <q-item
+                        v-if="$can('admin.activity.duplicate')"
+                        clickable
+                        v-ripple
+                        v-close-popup
+                        @click.stop="
+                          router.get(
+                            route('admin.activity.duplicate', props.row.id)
+                          )
+                        "
+                      >
+                        <q-item-section avatar>
+                          <q-icon name="content_copy" />
+                        </q-item-section>
+                        <q-item-section>Duplikat</q-item-section>
+                      </q-item>
+                      <q-item
+                        v-if="$can('admin.activity.edit')"
+                        clickable
+                        v-ripple
+                        v-close-popup
+                        @click.stop="
+                          router.get(route('admin.activity.edit', props.row.id))
+                        "
+                      >
+                        <q-item-section avatar>
+                          <q-icon name="edit" />
+                        </q-item-section>
+                        <q-item-section>Edit</q-item-section>
+                      </q-item>
+                      <q-item
+                        v-if="$can('admin.activity.delete')"
+                        @click.stop="deleteItem(props.row)"
+                        clickable
+                        v-ripple
+                        v-close-popup
+                      >
+                        <q-item-section avatar>
+                          <q-icon name="delete_forever" />
+                        </q-item-section>
+                        <q-item-section>Hapus</q-item-section>
+                      </q-item>
+                    </q-list>
+                  </q-menu>
+                </q-btn>
+              </q-card-actions>
+            </q-card>
+          </div>
+        </template>
+
         <template v-slot:body="props">
           <q-tr
             :props="props"
@@ -391,70 +542,7 @@ watch(showFilter, () => storage.set("show-filter", showFilter.value), {
               />
             </q-td>
             <q-td key="date" :props="props">
-              <template v-if="!$q.screen.lt.md">
-                {{ $dayjs(props.row.date).format("DD MMMM YYYY") }}
-              </template>
-              <template v-else>
-                <div class="q-pb-xs" v-if="props.row.image_path">
-                  <q-img
-                    :src="`/${props.row.image_path}`"
-                    style="border: 1px solid #ddd; max-height: 150px"
-                    spinner-color="grey"
-                    fit="scale-down"
-                    class="rounded-borders bg-light-green-2"
-                  />
-                </div>
-                <div>
-                  <q-icon name="edit_calendar" />
-                  {{ $dayjs(props.row.date).format("DD MMMM YYYY") }}
-                </div>
-                <div>
-                  <q-icon name="overview" />
-                  {{ props.row.type.name }}
-                </div>
-                <div>
-                  <q-icon name="person" />
-                  {{ props.row.user.name }} ({{ props.row.user.username }})
-                </div>
-                <div v-if="props.row.product">
-                  <q-icon name="potted_plant" />
-                  {{ props.row.product.name }}
-                </div>
-                <div>
-                  <q-icon name="home_pin" />
-                  {{ props.row.location }}
-                </div>
-                <div>
-                  <q-icon name="sell" />
-                  Rp. {{ formatNumber(props.row.cost) }}
-                </div>
-                <div>
-                  <template v-if="props.row.status == 'approved'">
-                    <q-badge label="Disetujui" color="green" />
-                  </template>
-                  <template v-else-if="props.row.status == 'rejected'">
-                    <q-badge label="Ditolak" color="red" />
-                  </template>
-                  <template v-else>
-                    <q-badge label="Belum Direspon" color="grey" />
-                  </template>
-                </div>
-                <div
-                  v-if="props.row.notes"
-                  style="
-                    white-space: pre-wrap;
-                    word-break: break-word;
-                    overflow-wrap: break-word;
-                  "
-                >
-                  <q-icon name="notes" />
-                  {{
-                    props.row.notes.length > 100
-                      ? props.row.notes.slice(0, 100) + "..."
-                      : props.row.notes
-                  }}
-                </div>
-              </template>
+              {{ $dayjs(props.row.date).format("DD MMMM YYYY") }}
             </q-td>
             <q-td key="type" :props="props">
               {{ props.row.type.name }}
@@ -620,3 +708,54 @@ watch(showFilter, () => storage.set("show-filter", showFilter.value), {
     </div>
   </authenticated-layout>
 </template>
+
+<style scoped>
+.activity-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.mobile-realization-card {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 10px;
+}
+
+.mobile-realization-image {
+  width: 100%;
+  height: 180px;
+  background: #f5f5f5;
+}
+
+.mobile-activity-card,
+.mobile-line {
+  width: 100%;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+@media (max-width: 599px) {
+  .activity-table-wrap :deep(.custom-select) {
+    min-width: 0 !important;
+  }
+
+  .activity-table-wrap :deep(.q-table__middle) {
+    overflow-x: hidden;
+  }
+
+  .activity-table-wrap :deep(.q-td),
+  .activity-table-wrap :deep(.q-field) {
+    min-width: 0 !important;
+    max-width: 100%;
+  }
+
+  .activity-table-wrap :deep(.q-field__native),
+  .activity-table-wrap :deep(.q-field__input),
+  .activity-table-wrap :deep(.q-select__dropdown-icon) {
+    min-width: 0;
+  }
+}
+</style>

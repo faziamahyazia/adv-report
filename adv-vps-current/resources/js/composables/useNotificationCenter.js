@@ -3,8 +3,26 @@ import { usePage } from "@inertiajs/vue3";
 import { useQuasar } from "quasar";
 
 const POLL_INTERVAL_MS = 30000;
+const REFRESH_IF_STALE_MS = 15000;
 const SEEN_NOTIFICATION_IDS_KEY = "advanta-report.notification.seen";
 const MAX_SEEN_IDS = 100;
+
+// Keep notification state shared across page-level layout remounts.
+const sharedItems = ref([]);
+const sharedUnreadCount = ref(0);
+const sharedIsLoading = ref(false);
+const sharedPushStatus = ref("unknown");
+const sharedBrowserPermission = ref(
+  typeof window !== "undefined" && "Notification" in window
+    ? window.Notification.permission
+    : "unsupported"
+);
+let sharedPollTimerId = null;
+let sharedRealtimeChannelName = null;
+let sharedHasHydrated = false;
+let sharedInitialized = false;
+let sharedLastFetchedAt = 0;
+let sharedCurrentUserId = null;
 
 function routePath(name, fallback, params = {}) {
   if (typeof window.route === "function") {
@@ -17,23 +35,15 @@ function routePath(name, fallback, params = {}) {
 export default function useNotificationCenter() {
   const page = usePage();
   const $q = useQuasar();
-  const items = ref([]);
-  const unreadCount = ref(0);
-  const isLoading = ref(false);
-  const pushStatus = ref("unknown");
-  const browserPermission = ref(
-    typeof window !== "undefined" && "Notification" in window
-      ? window.Notification.permission
-      : "unsupported"
-  );
+  const items = sharedItems;
+  const unreadCount = sharedUnreadCount;
+  const isLoading = sharedIsLoading;
+  const pushStatus = sharedPushStatus;
+  const browserPermission = sharedBrowserPermission;
   const pushSupported =
     typeof window !== "undefined" &&
     "serviceWorker" in navigator &&
     "PushManager" in window;
-
-  let pollTimerId = null;
-  let realtimeChannelName = null;
-  let hasHydrated = false;
 
   function authUserId() {
     return page.props?.auth?.user?.id ?? null;
@@ -203,11 +213,12 @@ export default function useNotificationCenter() {
 
       rememberNotifications(unreadItems.map((item) => item.id));
 
-      if (hasHydrated) {
+      if (sharedHasHydrated) {
         maybeShowBrowserNotifications(unseenItems);
       }
 
-      hasHydrated = true;
+      sharedHasHydrated = true;
+      sharedLastFetchedAt = Date.now();
     } catch (error) {
       if (!silent) {
         console.error("Gagal memuat notification inbox", error);
@@ -300,19 +311,19 @@ export default function useNotificationCenter() {
   }
 
   function startPolling() {
-    if (pollTimerId !== null) {
-      clearInterval(pollTimerId);
+    if (sharedPollTimerId !== null) {
+      clearInterval(sharedPollTimerId);
     }
 
-    pollTimerId = window.setInterval(() => {
+    sharedPollTimerId = window.setInterval(() => {
       fetchNotifications({ silent: true });
     }, POLL_INTERVAL_MS);
   }
 
   function stopPolling() {
-    if (pollTimerId !== null) {
-      clearInterval(pollTimerId);
-      pollTimerId = null;
+    if (sharedPollTimerId !== null) {
+      clearInterval(sharedPollTimerId);
+      sharedPollTimerId = null;
     }
   }
 
@@ -323,9 +334,10 @@ export default function useNotificationCenter() {
       return;
     }
 
-    realtimeChannelName = `App.Models.User.${userId}`;
+    sharedRealtimeChannelName = `App.Models.User.${userId}`;
+    sharedCurrentUserId = userId;
 
-    window.Echo.private(realtimeChannelName).notification((notification) => {
+    window.Echo.private(sharedRealtimeChannelName).notification((notification) => {
       if (notification?.context === "admin_info" && notification?.context_action === "read") {
         $q.notify({
           color: "positive",
@@ -347,33 +359,58 @@ export default function useNotificationCenter() {
   }
 
   function unsubscribeRealtimeNotifications() {
-    if (typeof window === "undefined" || !window.Echo || !realtimeChannelName) {
+    if (typeof window === "undefined" || !window.Echo || !sharedRealtimeChannelName) {
       return;
     }
 
-    window.Echo.leave(realtimeChannelName);
-    realtimeChannelName = null;
+    window.Echo.leave(sharedRealtimeChannelName);
+    sharedRealtimeChannelName = null;
+    sharedCurrentUserId = null;
+  }
+
+  function syncRealtimeSubscription() {
+    const currentUserId = authUserId();
+
+    if (String(currentUserId || "") === String(sharedCurrentUserId || "")) {
+      return;
+    }
+
+    unsubscribeRealtimeNotifications();
+    subscribeRealtimeNotifications();
+  }
+
+  function fetchIfStale() {
+    if (!sharedLastFetchedAt || Date.now() - sharedLastFetchedAt > REFRESH_IF_STALE_MS) {
+      fetchNotifications({ silent: true });
+    }
   }
 
   onMounted(() => {
-    syncPushStatus().catch((error) => {
-      console.error("Gagal sinkron status web push", error);
-    });
+    syncRealtimeSubscription();
 
-    if (pushSupported && browserPermission.value === "granted") {
-      registerAndSubscribePush().catch((error) => {
-        console.error("Gagal registrasi web push", error);
+    if (!sharedInitialized) {
+      sharedInitialized = true;
+
+      syncPushStatus().catch((error) => {
+        console.error("Gagal sinkron status web push", error);
       });
+
+      if (pushSupported && browserPermission.value === "granted") {
+        registerAndSubscribePush().catch((error) => {
+          console.error("Gagal registrasi web push", error);
+        });
+      }
+
+      fetchNotifications();
+      startPolling();
+      return;
     }
 
-    fetchNotifications();
-    subscribeRealtimeNotifications();
-    startPolling();
+    fetchIfStale();
   });
 
   onBeforeUnmount(() => {
-    unsubscribeRealtimeNotifications();
-    stopPolling();
+    // Intentionally keep polling and channel subscription alive across Inertia page transitions.
   });
 
   return {

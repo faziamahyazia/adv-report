@@ -87,6 +87,7 @@ class HarvestResultController extends Controller
             'total_pieces' => 'nullable|numeric|min:0',
             'germination_percentage' => 'nullable|numeric|min:0|max:100',
             'is_multiple_harvest' => 'nullable|boolean',
+            'is_completed' => 'nullable|boolean',
             'harvest_cycles' => 'nullable|array',
             'harvest_cycles.*.label' => 'nullable|string|max:10',
             'harvest_cycles.*.date' => 'nullable|date',
@@ -106,6 +107,9 @@ class HarvestResultController extends Controller
         ]);
 
         $isMultipleHarvest = (bool) ($validated['is_multiple_harvest'] ?? false);
+        $isCompleted = array_key_exists('is_completed', $validated)
+            ? (bool) $validated['is_completed']
+            : !$isMultipleHarvest;
         $cycles = collect($validated['harvest_cycles'] ?? [])
             ->map(function ($cycle, $index) {
                 $quantity = isset($cycle['quantity']) ? (float) $cycle['quantity'] : null;
@@ -146,11 +150,7 @@ class HarvestResultController extends Controller
 
         $totalPieces = array_key_exists('total_pieces', $validated)
             ? (float) $validated['total_pieces']
-            : (float) ($demoPlot?->population ?? 0);
-
-        if ($totalPieces <= 0 && $demoPlot?->population) {
-            $totalPieces = (float) $demoPlot->population;
-        }
+            : 0;
 
         $perPieceQuantity = $totalPieces > 0 ? ($harvestQuantity / $totalPieces) : null;
         $putrenQuantity = $isFreshCorn ? (float) ($validated['putren_quantity'] ?? 0) : 0;
@@ -182,6 +182,7 @@ class HarvestResultController extends Controller
             'putren_per_piece_quantity' => $putrenPerPieceQuantity,
             'putren_per_tree_quantity' => $putrenPerTreeQuantity,
             'is_multiple_harvest' => $isMultipleHarvest,
+            'is_completed' => $isCompleted,
             'harvest_cycles' => $isMultipleHarvest ? $cycles->all() : null,
             'total_pieces' => $totalPieces > 0 ? $totalPieces : null,
             'germination_percentage' => $validated['germination_percentage'] ?? null,
@@ -223,6 +224,7 @@ class HarvestResultController extends Controller
             'total_pieces' => 'nullable|numeric|min:0',
             'germination_percentage' => 'nullable|numeric|min:0|max:100',
             'is_multiple_harvest' => 'nullable|boolean',
+            'is_completed' => 'nullable|boolean',
             'harvest_cycles' => 'nullable|array',
             'harvest_cycles.*.label' => 'nullable|string|max:10',
             'harvest_cycles.*.date' => 'nullable|date',
@@ -242,6 +244,9 @@ class HarvestResultController extends Controller
         ]);
 
         $isMultipleHarvest = (bool) ($validated['is_multiple_harvest'] ?? $item->is_multiple_harvest);
+        $isCompleted = array_key_exists('is_completed', $validated)
+            ? (bool) $validated['is_completed']
+            : (bool) $item->is_completed;
 
         $rawCycles = array_key_exists('harvest_cycles', $validated)
             ? ($validated['harvest_cycles'] ?? [])
@@ -286,11 +291,7 @@ class HarvestResultController extends Controller
 
         $totalPieces = array_key_exists('total_pieces', $validated)
             ? (float) $validated['total_pieces']
-            : (float) ($demoPlot?->population ?? $item->total_pieces ?? 0);
-
-        if ($totalPieces <= 0 && $demoPlot?->population) {
-            $totalPieces = (float) $demoPlot->population;
-        }
+            : (float) ($item->total_pieces ?? 0);
 
         $perPieceQuantity = $totalPieces > 0 ? ($harvestQuantity / $totalPieces) : null;
         $putrenQuantity = $isFreshCorn ? (float) ($validated['putren_quantity'] ?? ($item->putren_quantity ?? 0)) : 0;
@@ -346,6 +347,7 @@ class HarvestResultController extends Controller
             'putren_per_piece_quantity' => $putrenPerPieceQuantity,
             'putren_per_tree_quantity' => $putrenPerTreeQuantity,
             'is_multiple_harvest' => $isMultipleHarvest,
+            'is_completed' => $isCompleted,
             'harvest_cycles' => $isMultipleHarvest ? $cycles->all() : null,
             'total_pieces' => $totalPieces > 0 ? $totalPieces : null,
             'germination_percentage' => $validated['germination_percentage'] ?? $item->germination_percentage,

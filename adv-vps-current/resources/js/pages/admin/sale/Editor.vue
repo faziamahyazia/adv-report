@@ -24,7 +24,6 @@ const emptyItem = () => ({
   product_id: null,
   quantity: 1,
   unit: "",
-  lot_number: "",
   price: 0,
   subtotal: 0,
 });
@@ -36,7 +35,6 @@ const mappedItems = (rawData.items || []).map((item) => {
     product_id: toNumberOrNull(item.product_id || item.product?.id),
     quantity,
     unit: item.unit || "",
-    lot_number: item.lot_number || "",
     price,
     subtotal: Number(item.subtotal || quantity * price),
   };
@@ -63,8 +61,23 @@ const distributorStocks = ref([]);
 const distributorStocksLoading = ref(false);
 
 const shouldShowDistributorStock = computed(
-  () => ["bs", "field_officer"].includes(currentUser.role) && form.sale_type === "retailer" && !!form.distributor_id
+  () => form.sale_type === "retailer" && !!form.distributor_id
 );
+
+const selectedDistributorName = computed(() => {
+  const distributor = (page.props.distributors || []).find(
+    (item) => Number(item.id) === Number(form.distributor_id)
+  );
+  return distributor?.name || "-";
+});
+
+const sourceStockLabel = computed(() => {
+  if (form.sale_type === "retailer" && selectedRetailerType.value === "R2" && form.source_from === "r1") {
+    return "Sumber Stok R1";
+  }
+
+  return "Distributor";
+});
 
 const stockByProductId = computed(() => {
   const out = {};
@@ -103,12 +116,23 @@ const productMap = computed(() => {
   return out;
 });
 
-const distributorOptions = computed(() =>
-  (page.props.distributors || []).map((item) => ({
+const sourceStockOptions = computed(() => {
+  const allSources = (page.props.distributors || []).map((item) => ({
     value: Number(item.id),
-    label: item.name,
-  }))
-);
+    label: item.type ? `${item.name} (${item.type})` : item.name,
+    type: item.type,
+  }));
+
+  if (form.sale_type !== "retailer") {
+    return allSources.filter((item) => item.type === "Distributor");
+  }
+
+  if (selectedRetailerType.value === "R2" && form.source_from === "r1") {
+    return allSources.filter((item) => item.type === "R1");
+  }
+
+  return allSources.filter((item) => item.type === "Distributor");
+});
 
 const retailerOptions = computed(() =>
   (page.props.retailers || []).map((item) => ({
@@ -281,8 +305,10 @@ const fetchDistributorStocks = async () => {
       params: { distributor_id: form.distributor_id },
     });
     distributorStocks.value = response.data.rows || [];
+    console.log("[DEBUG] fetchDistributorStocks - distributor_id:", form.distributor_id, "rows:", distributorStocks.value);
   } catch (error) {
     distributorStocks.value = [];
+    console.error("[DEBUG] fetchDistributorStocks error:", error);
     $q.notify({
       type: "negative",
       message: error?.response?.data?.message || "Gagal memuat stok distributor",
@@ -360,7 +386,6 @@ const submit = () => {
         product_id: toNumberOrNull(item.product_id),
         quantity: Number(item.quantity || 0),
         unit: item.unit || null,
-        lot_number: item.lot_number?.trim() || null,
         price: Number(item.price || 0),
       })),
   }));
@@ -378,7 +403,7 @@ watch(
       form.retailer_id = null;
     }
 
-    if (shouldShowDistributorStock.value) {
+    if (shouldShowDistributorStock.value || !!form.distributor_id) {
       fetchDistributorStocks();
     } else {
       distributorStocks.value = [];
@@ -389,7 +414,7 @@ watch(
 watch(
   () => form.distributor_id,
   () => {
-    if (shouldShowDistributorStock.value) {
+    if (shouldShowDistributorStock.value || !!form.distributor_id) {
       fetchDistributorStocks();
     } else {
       distributorStocks.value = [];
@@ -397,12 +422,33 @@ watch(
   }
 );
 
-// Auto-set source_from saat retailer berubah
-// R1 → selalu dari distributor; R2 → reset ke distributor (user bisa ganti)
 watch(
   () => form.retailer_id,
   () => {
-    form.source_from = "distributor";
+    if (selectedRetailerType.value === "R1") {
+      form.source_from = "distributor";
+      return;
+    }
+
+    if (!form.source_from) {
+      form.source_from = "distributor";
+    }
+  }
+);
+
+watch(
+  () => form.source_from,
+  () => {
+    const allowedIds = new Set(sourceStockOptions.value.map((item) => Number(item.value)));
+    if (form.distributor_id && !allowedIds.has(Number(form.distributor_id))) {
+      form.distributor_id = null;
+    }
+
+    if (shouldShowDistributorStock.value || !!form.distributor_id) {
+      fetchDistributorStocks();
+    } else {
+      distributorStocks.value = [];
+    }
   }
 );
 
@@ -469,8 +515,8 @@ onMounted(async () => {
                 <div class="col-xs-12 col-sm-6 col-md-4">
                   <q-select
                     v-model="form.distributor_id"
-                    label="Distributor"
-                    :options="distributorOptions"
+                    :label="sourceStockLabel"
+                    :options="sourceStockOptions"
                     map-options
                     emit-value
                     :disable="form.processing || isDistributorLocked"
@@ -540,7 +586,10 @@ onMounted(async () => {
                 <div class="col-12" v-if="shouldShowDistributorStock">
                   <q-card flat bordered class="bg-grey-1">
                     <q-card-section class="q-pa-sm">
-                      <div class="text-subtitle2 text-weight-bold q-mb-xs">Stok Distributor</div>
+                      <div class="text-subtitle2 text-weight-bold q-mb-xs">Stok Toko Terpilih</div>
+                      <div class="text-caption text-grey-7 q-mb-sm">
+                        {{ selectedDistributorName }}
+                      </div>
                       <q-inner-loading :showing="distributorStocksLoading" color="primary" />
 
                       <div class="overflow-auto" style="max-height: 220px">
@@ -610,21 +659,20 @@ onMounted(async () => {
 
               <!-- Desktop: tabel -->
               <div v-if="!isMobile" class="overflow-auto">
-                <q-markup-table flat bordered square separator="cell" style="min-width: 860px">
+                <q-markup-table flat bordered square separator="cell" style="min-width: 1100px">
                   <thead>
                     <tr>
-                      <th style="width: 32%">Produk</th>
-                      <th style="width: 12%">Qty</th>
-                      <th style="width: 12%">Satuan</th>
-                      <th style="width: 14%">No. Lot</th>
-                      <th style="width: 14%">Harga</th>
-                      <th style="width: 14%">Subtotal</th>
-                      <th style="width: 6%"></th>
+                      <th style="width: 28%; padding: 12px 8px">Produk</th>
+                      <th style="width: 11%; padding: 12px 8px; text-align: center">Qty</th>
+                      <th style="width: 10%; padding: 12px 8px; text-align: center">Satuan</th>
+                      <th style="width: 15%; padding: 12px 8px; text-align: right">Harga</th>
+                      <th style="width: 20%; padding: 12px 8px; text-align: right">Subtotal</th>
+                      <th style="width: 3%; padding: 12px 4px"></th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr v-for="(item, index) in form.items" :key="index">
-                      <td>
+                      <td style="padding: 8px">
                         <q-select
                           v-model="item.product_id"
                           :options="itemProductOptions"
@@ -643,7 +691,7 @@ onMounted(async () => {
                         </div>
                       </td>
 
-                      <td>
+                      <td style="padding: 8px; text-align: center; vertical-align: middle">
                         <q-input
                           v-model.number="item.quantity"
                           type="number"
@@ -652,6 +700,9 @@ onMounted(async () => {
                           min="0.01"
                           step="0.01"
                           :disable="form.processing"
+                          class="full-width"
+                          style="min-width: 90px"
+                          input-class="text-center"
                           @update:model-value="updateSubtotal(item)"
                         />
                         <div v-if="form.errors[`items.${index}.quantity`]" class="text-caption text-red q-mt-xs">
@@ -662,7 +713,7 @@ onMounted(async () => {
                         </div>
                       </td>
 
-                      <td>
+                      <td style="padding: 8px; text-align: center">
                         <q-select
                           v-model="item.unit"
                           :options="itemUnitOptions(item)"
@@ -676,20 +727,7 @@ onMounted(async () => {
                         />
                       </td>
 
-                      <td>
-                        <q-input
-                          v-model.trim="item.lot_number"
-                          dense
-                          outlined
-                          :disable="form.processing"
-                          placeholder="No. Lot"
-                        />
-                        <div v-if="form.errors[`items.${index}.lot_number`]" class="text-caption text-red q-mt-xs">
-                          {{ form.errors[`items.${index}.lot_number`] }}
-                        </div>
-                      </td>
-
-                      <td>
+                      <td style="padding: 8px; text-align: right; vertical-align: middle">
                         <q-input
                           v-model.number="item.price"
                           type="number"
@@ -698,6 +736,9 @@ onMounted(async () => {
                           min="0.01"
                           step="0.01"
                           :disable="form.processing"
+                          class="full-width"
+                          style="min-width: 120px"
+                          input-class="text-right"
                           @update:model-value="updateSubtotal(item)"
                         />
                         <div v-if="form.errors[`items.${index}.price`]" class="text-caption text-red q-mt-xs">
@@ -705,11 +746,11 @@ onMounted(async () => {
                         </div>
                       </td>
 
-                      <td class="text-right text-weight-medium">
+                      <td style="padding: 8px; text-align: right; text-weight-medium; vertical-align: middle; min-width: 150px">
                         Rp {{ formatNumber(item.subtotal) }}
                       </td>
 
-                      <td class="text-center">
+                      <td style="padding: 4px; text-align: center; vertical-align: middle">
                         <q-btn
                           flat
                           round
@@ -786,18 +827,6 @@ onMounted(async () => {
                         @update:model-value="onUnitChange(item)"
                       />
                     </div>
-                  </div>
-
-                  <q-input
-                    v-model.trim="item.lot_number"
-                    label="No. Lot"
-                    dense
-                    outlined
-                    :disable="form.processing"
-                    class="q-mb-sm"
-                  />
-                  <div v-if="form.errors[`items.${index}.lot_number`]" class="text-caption text-red q-mb-xs">
-                    {{ form.errors[`items.${index}.lot_number`] }}
                   </div>
 
                   <q-input

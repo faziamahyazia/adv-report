@@ -15,6 +15,18 @@ export default {
             fontFamily: {
                 sans: ['Figtree', ...defaultTheme.fontFamily.sans],
             },
+            colors: {
+                advanta: {
+                    blue: '#0a3b82',
+                    blueLight: '#1677c8',
+                    green: '#00b140',
+                    greenDark: '#008a3d',
+                    gold: '#f9a800',
+                    orange: '#ff5a00',
+                    red: '#e31c4b',
+                    magenta: '#a10f56',
+                },
+            },
         },
     },
 

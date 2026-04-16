@@ -281,6 +281,8 @@ class ProductKnowledgeController extends Controller
             $arr['weakness_photo_urls'] = array_values(array_unique($weaknessPhotoUrls));
             $arr['can_edit'] = $canManage;
             $arr['can_delete'] = $canManage;
+            $arr['is_completed'] = (bool) ($arr['is_completed'] ?? false);
+            $arr['harvest_status_label'] = $arr['is_completed'] ? 'Panen Selesai' : 'Belum Selesai';
 
             return $arr;
         })->values();

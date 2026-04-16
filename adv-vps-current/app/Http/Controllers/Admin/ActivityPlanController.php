@@ -8,6 +8,7 @@ use App\Models\ActivityPlanDetail;
 use App\Models\ActivityType;
 use App\Models\Product;
 use App\Models\User;
+use App\Services\FonteWhatsAppService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -174,6 +175,10 @@ class ActivityPlanController extends Controller
         $item->responded_datetime = $action == 'reset' ? null : Carbon::now();
         $item->responded_by_id = $action == 'reset' ? null : $current_user->id;
         $item->save();
+
+        if ($action == 'approve') {
+            app(FonteWhatsAppService::class)->sendActivityPlanApprovedToBs($item->user, $item, $current_user);
+        }
 
         return response()->json([
             'message' => "Kegiatan #$item->id telah direspon.",

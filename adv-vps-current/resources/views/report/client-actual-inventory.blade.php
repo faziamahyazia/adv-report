@@ -13,7 +13,7 @@
         <th>Hybrid</th>
         <th>Check Date</th>
         <th>Lot Package</th>
-        <th>Quantity (Kg)</th>
+        <th>Quantity ({{ strtoupper($qtyUnit ?? 'kg') }})</th>
       </tr>
     </thead>
     <tbody>
@@ -26,7 +26,7 @@
           <td>{{ $item->product->name }}</td>
           <td>{{ format_date($item->check_date) }}</td>
           <td>{{ $item->lot_package }}</td>
-          <td align="right">{{ $item->quantity }}</td>
+          <td align="right">{{ $item->export_qty_text ?? '-' }}</td>
         </tr>
       @empty
         <tr>

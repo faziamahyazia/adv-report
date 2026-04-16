@@ -20,8 +20,8 @@ const summary       = computed(() => data.value.summary ?? null);
 const totalBS       = computed(() => rows.value.length);
 
 const COLORS = [
-  "#1976D2","#43A047","#FB8C00","#E53935","#8E24AA",
-  "#00ACC1","#F4511E","#6D4C41","#546E7A","#039BE5",
+  "#0a3b82", "#00b140", "#f9a800", "#e31c4b", "#a10f56",
+  "#1677c8", "#ff5a00", "#008a3d", "#132b50", "#4f5965",
 ];
 
 function grandTypeTotal(typeId) {
@@ -30,10 +30,10 @@ function grandTypeTotal(typeId) {
 
 // ── KPI helpers ───────────────────────────────────────────────────────────
 function kpiColor(kpi) {
-  if (kpi === null) return { text: "#9e9e9e", bg: "#f5f5f5", bar: "#bdbdbd", quasar: "grey" };
-  if (kpi >= 100)   return { text: "#2e7d32", bg: "#e8f5e9", bar: "#43a047", quasar: "positive" };
-  if (kpi >= 75)    return { text: "#e65100", bg: "#fff3e0", bar: "#fb8c00", quasar: "warning" };
-  return               { text: "#c62828", bg: "#ffebee", bar: "#e53935", quasar: "negative" };
+  if (kpi === null) return { text: "#7b8794", bg: "#f3f6fa", bar: "#c7d2de", quasar: "grey" };
+  if (kpi >= 100)   return { text: "#008a3d", bg: "#e9f8ef", bar: "#00b140", quasar: "positive" };
+  if (kpi >= 75)    return { text: "#ff5a00", bg: "#fff3e7", bar: "#f9a800", quasar: "warning" };
+  return               { text: "#a10f56", bg: "#ffeaf2", bar: "#e31c4b", quasar: "negative" };
 }
 
 const bestKpi = computed(() => {
@@ -115,7 +115,7 @@ const barBsOption = computed(() => {
         const rowName = rows.value[rowIdx]?.name ?? params[0]?.axisValue ?? "";
         const total   = rows.value[rowIdx]?.total ?? 0;
 
-        let html = `<div style="font-size:13px;font-weight:700;color:#333;margin-bottom:6px">
+        let html = `<div style="font-size:13px;font-weight:700;color:#132b50;margin-bottom:6px">
                       ${rowName}
                     </div>`;
 
@@ -124,13 +124,13 @@ const barBsOption = computed(() => {
           html += `<div style="display:flex;align-items:center;gap:8px;padding:2px 0;font-size:12px">
                      <span style="display:inline-block;width:9px;height:9px;border-radius:50%;
                                   background:${p.color};flex-shrink:0"></span>
-                     <span style="flex:1;min-width:80px;color:#555">${p.seriesName}</span>
-                     <span style="font-weight:700;color:#222">${p.value}</span>
+                     <span style="flex:1;min-width:80px;color:#4f5965">${p.seriesName}</span>
+                     <span style="font-weight:700;color:#132b50">${p.value}</span>
                    </div>`;
         });
 
-        html += `<div style="border-top:1px solid #f0f0f0;margin-top:6px;padding-top:5px;
-                              font-size:12px;font-weight:700;color:#333">
+        html += `<div style="border-top:1px solid #e8eff8;margin-top:6px;padding-top:5px;
+                              font-size:12px;font-weight:700;color:#132b50">
                    Total &nbsp;<span style="font-size:15px">${total}</span>
                  </div>`;
         return html;
@@ -139,14 +139,14 @@ const barBsOption = computed(() => {
 
     xAxis: {
       type: "value",
-      axisLabel: { fontSize: 9, color: "#bbb" },
-      splitLine: { lineStyle: { color: "#f5f5f5" } },
+      axisLabel: { fontSize: 9, color: "#7b8794" },
+      splitLine: { lineStyle: { color: "#e8eff8" } },
       axisLine: { show: false },
     },
     yAxis: {
       type: "category",
       data: bsNames,
-      axisLabel: { fontSize: 10, fontWeight: "600", color: "#555",
+      axisLabel: { fontSize: 10, fontWeight: "600", color: "#4f5965",
                    overflow: "truncate", width: 54 },
       axisTick: { show: false },
       axisLine: { show: false },
@@ -167,7 +167,7 @@ const barBsOption = computed(() => {
         position: "right",
         fontSize: 10,
         fontWeight: "700",
-        color: "#555",
+        color: "#4f5965",
         formatter: p => rows.value[p.dataIndex]?.total ?? "",
       } : { show: false },
     })),
@@ -208,20 +208,20 @@ const trendOption = computed(() => {
     tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
     legend: {
       bottom: 0,
-      textStyle: { fontSize: 9, color: "#666" },
+      textStyle: { fontSize: 9, color: "#4f5965" },
       itemWidth: 10, itemHeight: 7,
     },
     grid: { left: 36, right: 12, top: 8, bottom: 40, containLabel: true },
     xAxis: {
       type: "category",
       data: columns.value,
-      axisLabel: { fontSize: 9, interval: 0, rotate: 30, color: "#888" },
-      axisLine: { lineStyle: { color: "#e0e0e0" } },
+      axisLabel: { fontSize: 9, interval: 0, rotate: 30, color: "#7b8794" },
+      axisLine: { lineStyle: { color: "#d5dfec" } },
     },
     yAxis: {
       type: "value",
-      axisLabel: { fontSize: 9, color: "#aaa" },
-      splitLine: { lineStyle: { color: "#f0f0f0" } },
+      axisLabel: { fontSize: 9, color: "#7b8794" },
+      splitLine: { lineStyle: { color: "#e8eff8" } },
     },
     series: rows.value.map((bs, i) => ({
       name: bs.name.split(" ")[0],
@@ -276,7 +276,7 @@ const trendOption = computed(() => {
       <div :style="statGrid" class="section-gap">
 
         <div class="stat-card">
-          <div class="stat-icon" style="background:#e3f2fd">
+          <div class="stat-icon" style="background:#e8eff8">
             <q-icon name="event_available" color="primary" size="18px" />
           </div>
           <div class="stat-body">
@@ -286,21 +286,21 @@ const trendOption = computed(() => {
         </div>
 
         <div class="stat-card">
-          <div class="stat-icon" style="background:#e0f2f1">
-            <q-icon name="people" color="teal" size="18px" />
+          <div class="stat-icon" style="background:#e9f8ef">
+            <q-icon name="people" color="secondary" size="18px" />
           </div>
           <div class="stat-body">
-            <div class="stat-val text-teal">{{ totalBS }}</div>
+            <div class="stat-val text-secondary">{{ totalBS }}</div>
             <div class="stat-lbl">Jumlah BS</div>
           </div>
         </div>
 
         <div class="stat-card">
-          <div class="stat-icon" style="background:#fff3e0">
-            <q-icon name="insights" color="orange" size="18px" />
+          <div class="stat-icon" style="background:#fff3e7">
+            <q-icon name="insights" color="accent" size="18px" />
           </div>
           <div class="stat-body">
-            <div class="stat-val text-orange">{{ avgActivity }}</div>
+            <div class="stat-val text-accent">{{ avgActivity }}</div>
             <div class="stat-lbl">Rata-rata / BS</div>
           </div>
         </div>
@@ -329,7 +329,7 @@ const trendOption = computed(() => {
         <!-- Donut -->
         <div class="card">
           <div class="card-head">
-            <span class="card-accent" style="background:#1976D2"></span>
+            <span class="card-accent" style="background:#0a3b82"></span>
             <span class="card-title">Per Jenis Aktivitas</span>
           </div>
           <div class="card-body">
@@ -353,7 +353,7 @@ const trendOption = computed(() => {
         <!-- Bar per BS -->
         <div class="card">
           <div class="card-head">
-            <span class="card-accent" style="background:#43A047"></span>
+            <span class="card-accent" style="background:#00b140"></span>
             <span class="card-title">Kegiatan per BS</span>
           </div>
           <div class="card-body chart-body">
@@ -372,7 +372,7 @@ const trendOption = computed(() => {
            ════════════════════════════════════════ -->
       <div v-if="multiPeriod && trendOption" class="card section-gap">
         <div class="card-head">
-          <span class="card-accent" style="background:#8E24AA"></span>
+          <span class="card-accent" style="background:#a10f56"></span>
           <span class="card-title">Tren Kegiatan per Periode</span>
         </div>
         <div class="card-body chart-body">
@@ -386,7 +386,7 @@ const trendOption = computed(() => {
            ════════════════════════════════════════ -->
       <template v-if="periodAchievement.length">
         <div class="sect-head section-gap">
-          <q-icon name="trending_up" color="blue-6" size="16px" />
+          <q-icon name="trending_up" color="primary" size="16px" />
           <span>Pencapaian per Periode</span>
         </div>
         <div class="card section-gap">
@@ -411,7 +411,7 @@ const trendOption = computed(() => {
       <template v-if="summary">
 
         <div class="sect-head section-gap">
-          <q-icon name="emoji_events" color="amber-8" size="16px" />
+          <q-icon name="emoji_events" color="accent" size="16px" />
           <span>KPI per BS</span>
         </div>
 
@@ -585,16 +585,16 @@ const trendOption = computed(() => {
   align-items: center;
   padding: 48px 0;
   gap: 8px;
-  color: #9e9e9e;
+  color: #7b8794;
 }
-.empty-title { font-size: 15px; font-weight: 600; color: #757575; }
+.empty-title { font-size: 15px; font-weight: 600; color: #4f5965; }
 .empty-sub   { font-size: 12px; }
 
 /* ════════════════════════════════════════
    HERO BANNER
    ════════════════════════════════════════ */
 .hero {
-  background: linear-gradient(135deg, #1565C0 0%, #1976D2 60%, #0288D1 100%);
+  background: linear-gradient(135deg, #132b50 0%, #0a3b82 60%, #1677c8 100%);
   border-radius: 12px;
   padding: 16px 18px 14px;
   color: #fff;
@@ -664,7 +664,7 @@ const trendOption = computed(() => {
 }
 .stat-lbl {
   font-size: 10px;
-  color: #9e9e9e;
+  color: #7b8794;
   margin-top: 1px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -697,7 +697,7 @@ const trendOption = computed(() => {
 .card-title {
   font-size: 13px;
   font-weight: 700;
-  color: #424242;
+  color: #132b50;
 }
 .card-body {
   padding: 10px 12px;
@@ -741,7 +741,7 @@ const trendOption = computed(() => {
 }
 .lname {
   font-size: 10px;
-  color: #757575;
+  color: #4f5965;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -763,7 +763,7 @@ const trendOption = computed(() => {
   gap: 6px;
   font-size: 13px;
   font-weight: 700;
-  color: #424242;
+  color: #132b50;
 }
 
 /* ════════════════════════════════════════
@@ -788,7 +788,7 @@ const trendOption = computed(() => {
 .kpi-name {
   font-size: 11px;
   font-weight: 700;
-  color: #424242;
+  color: #132b50;
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -805,7 +805,7 @@ const trendOption = computed(() => {
   display: flex;
   align-items: center;
   gap: 0;
-  background: #f8f8f8;
+  background: #f3f6fa;
   border-radius: 6px;
   padding: 4px 6px;
   margin-bottom: 6px;
@@ -816,9 +816,9 @@ const trendOption = computed(() => {
   flex-direction: column;
   align-items: center;
 }
-.kpi-at-lbl  { font-size: 9px; color: #aaa; }
-.kpi-at-val  { font-size: 12px; font-weight: 700; color: #424242; }
-.kpi-divider { width: 1px; height: 28px; background: #e0e0e0; flex-shrink: 0; }
+.kpi-at-lbl  { font-size: 9px; color: #7b8794; }
+.kpi-at-val  { font-size: 12px; font-weight: 700; color: #132b50; }
+.kpi-divider { width: 1px; height: 28px; background: #d5dfec; flex-shrink: 0; }
 .kpi-types   { display: flex; flex-direction: column; gap: 3px; margin-top: 4px; }
 .kpi-type {
   display: flex;
@@ -828,7 +828,7 @@ const trendOption = computed(() => {
 }
 .kpi-type-name {
   font-size: 10px;
-  color: #9e9e9e;
+  color: #7b8794;
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -838,7 +838,7 @@ const trendOption = computed(() => {
 .kpi-type-val {
   font-size: 10px;
   font-weight: 700;
-  color: #424242;
+  color: #132b50;
   flex-shrink: 0;
 }
 
@@ -860,12 +860,12 @@ const trendOption = computed(() => {
   flex: 1;
   text-align: center;
 }
-.team-lbl { font-size: 10px; color: #9e9e9e; margin-bottom: 2px; }
+.team-lbl { font-size: 10px; color: #7b8794; margin-bottom: 2px; }
 .team-val  { font-size: 1.2rem; font-weight: 800; }
 .team-divider {
   width: 1px;
   height: 36px;
-  background: #eeeeee;
+  background: #dfe7f2;
   flex-shrink: 0;
 }
 
@@ -877,14 +877,14 @@ const trendOption = computed(() => {
   align-items: center;
   gap: 8px;
   padding: 5px 0;
-  border-bottom: 1px solid #f5f5f5;
+  border-bottom: 1px solid #e8eff8;
 }
 .period-row:last-child { border-bottom: none; }
 
 .period-label {
   font-size: 11px;
   font-weight: 600;
-  color: #555;
+  color: #4f5965;
   flex: 0 0 80px;
   white-space: nowrap;
   overflow: hidden;
@@ -893,14 +893,14 @@ const trendOption = computed(() => {
 .period-bar-wrap {
   flex: 1;
   height: 8px;
-  background: #f0f0f0;
+  background: #e8eff8;
   border-radius: 4px;
   overflow: hidden;
   min-width: 0;
 }
 .period-bar {
   height: 100%;
-  background: linear-gradient(90deg, #1976D2 0%, #42A5F5 100%);
+  background: linear-gradient(90deg, #0a3b82 0%, #1677c8 100%);
   border-radius: 4px;
   transition: width 0.4s ease;
   min-width: 4px;
@@ -914,12 +914,12 @@ const trendOption = computed(() => {
 .period-total {
   font-size: 12px;
   font-weight: 700;
-  color: #1976D2;
+  color: #0a3b82;
   line-height: 1.2;
 }
 .period-pct {
   font-size: 10px;
-  color: #9e9e9e;
+  color: #7b8794;
   line-height: 1.2;
 }
 
@@ -935,14 +935,14 @@ const trendOption = computed(() => {
 .agro-table th,
 .agro-table td {
   padding: 4px 3px;
-  border: 1px solid #eeeeee;
+  border: 1px solid #dfe7f2;
   overflow: hidden;
 }
 .agro-table th {
-  background: #f5f5f5;
+  background: #f3f6fa;
   text-align: center;
   font-weight: 600;
-  color: #555;
+  color: #4f5965;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -955,7 +955,7 @@ const trendOption = computed(() => {
   font-size: 0.7rem;
 }
 .col-bs   { text-align: center; }
-.col-tot  { text-align: center; background: #fafafa !important; font-weight: 700; }
+.col-tot  { text-align: center; background: #f7f9fc !important; font-weight: 700; }
 .col-num  { text-align: center; }
 .type-dot {
   display: inline-block;
@@ -965,9 +965,9 @@ const trendOption = computed(() => {
   vertical-align: middle;
   flex-shrink: 0;
 }
-.cell-active { color: #1976D2; font-weight: 700; }
-.cell-zero   { color: #ccc; }
-.period-header-row td { background: #e3f2fd; font-weight: 700; padding: 3px 4px; font-size: 0.7rem; }
-.period-total-row td  { background: #f9fbe7; border-top: 1px solid #c5cae9; }
-.footer-row td        { background: #fce4ec; border-top: 2px solid #e57373; font-weight: 700; }
+.cell-active { color: #0a3b82; font-weight: 700; }
+.cell-zero   { color: #b0bcc9; }
+.period-header-row td { background: #e8eff8; font-weight: 700; padding: 3px 4px; font-size: 0.7rem; }
+.period-total-row td  { background: #ecf9f0; border-top: 1px solid #b8e0c7; }
+.footer-row td        { background: #ffeaf2; border-top: 2px solid #e31c4b; font-weight: 700; }
 </style>

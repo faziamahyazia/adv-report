@@ -64,6 +64,33 @@ class SaleController extends Controller
         return $qty;
     }
 
+    private function convertFromBaseQty(Product $product, float $baseQty, ?string $targetUnit): float
+    {
+        $baseQty = max(0, (float) $baseQty);
+        $targetNorm = $this->normalizeUnit($targetUnit);
+        $uom1 = $this->normalizeUnit($product->uom_1);
+        $uom2 = $this->normalizeUnit($product->uom_2);
+
+        if ($baseQty <= 0 || $targetNorm === '' || $uom1 === '' || $targetNorm === $uom1) {
+            return $baseQty;
+        }
+
+        if ($uom2 !== '' && $targetNorm === $uom2) {
+            $weightGram = (float) ($product->weight ?? 0);
+            if ($weightGram > 0) {
+                if ($uom1 === 'kg' && $uom2 === 'pcs') {
+                    return round(($baseQty * 1000) / $weightGram, 6);
+                }
+
+                if ($uom1 === 'pcs' && $uom2 === 'kg') {
+                    return round(($baseQty * $weightGram) / 1000, 6);
+                }
+            }
+        }
+
+        return $baseQty;
+    }
+
     private function buildInventoryQuantities(Product $product, float $baseQty): array
     {
         $uom1 = $this->normalizeUnit($product->uom_1);
@@ -102,6 +129,38 @@ class SaleController extends Controller
             return Sale::Type_Distributor;
         }
         return Sale::Type_Retailer;
+    }
+
+    private function applyDistributorSalesScope($query): void
+    {
+        $query->where(function ($scope) {
+            $scope->where('sales.source_from', Sale::Source_Distributor)
+                ->orWhere(function ($legacyScope) {
+                    $legacyScope->where('sales.sale_type', Sale::Type_Distributor)
+                        ->where(function ($legacySource) {
+                            $legacySource->whereNull('sales.source_from')
+                                ->orWhere('sales.source_from', '');
+                        });
+                });
+        });
+    }
+
+    private function applyExcludeBsRetailerScope($query): void
+    {
+        $query->where(function ($scope) {
+            $scope->where('sales.sale_type', Sale::Type_Distributor)
+                ->orWhere(function ($retailerScope) {
+                    $retailerScope->where('sales.sale_type', Sale::Type_Retailer)
+                        ->where(function ($creatorScope) {
+                            $creatorScope->whereNull('sales.created_by_uid')
+                                ->orWhereNotIn('sales.created_by_uid', function ($sub) {
+                                    $sub->select('id')
+                                        ->from('users')
+                                        ->whereIn('role', [User::Role_BS, 'field_officer']);
+                                });
+                        });
+                });
+        });
     }
 
     private function applyRoleScope($query)
@@ -201,8 +260,8 @@ class SaleController extends Controller
             'data'                 => null,
             'products'             => Product::where('active', true)->orderBy('name')
                 ->get(['id', 'name', 'uom_1', 'uom_2', 'price_1', 'price_2', 'weight']),
-            'distributors'         => Customer::where('type', Customer::Type_Distributor)
-                ->orderBy('name')->get(['id', 'name']),
+            'distributors'         => Customer::whereIn('type', [Customer::Type_Distributor, Customer::Type_R1])
+                ->orderBy('name')->get(['id', 'name', 'type']),
             'retailers'            => $retailerQuery
                 ->orderBy('name')->get(['id', 'name', 'type', 'created_by_uid', 'assigned_user_id']),
             'saleType'             => $this->roleDefaultSaleType(),
@@ -226,8 +285,8 @@ class SaleController extends Controller
             'data'                 => $sale,
             'products'             => Product::where('active', true)->orderBy('name')
                 ->get(['id', 'name', 'uom_1', 'uom_2', 'price_1', 'price_2', 'weight']),
-            'distributors'         => Customer::where('type', Customer::Type_Distributor)
-                ->orderBy('name')->get(['id', 'name']),
+            'distributors'         => Customer::whereIn('type', [Customer::Type_Distributor, Customer::Type_R1])
+                ->orderBy('name')->get(['id', 'name', 'type']),
             'retailers'            => $retailerQuery
                 ->orderBy('name')->get(['id', 'name', 'type', 'created_by_uid', 'assigned_user_id']),
             'saleType'             => $sale->sale_type,
@@ -286,6 +345,7 @@ class SaleController extends Controller
         $filter    = $request->get('filter', []);
         $role      = Auth::user()->role;
         $isBs      = $this->isBsRole($role);
+        $isBsInboxMode = !empty($filter['bs_only']);
 
         $q = Sale::with(['distributor:id,name', 'retailer:id,name', 'created_by_user:id,name']);
         $this->applyRoleScope($q);
@@ -303,47 +363,38 @@ class SaleController extends Controller
         });
 
         // Base total dari query aktif (FY/filter/role scope tetap terpakai)
+        // Untuk Agronomist/Admin: hanya hitung RELEASED distributor sales di total card
+        // Untuk BS: lihat ALL sales mereka (pending + released)
         $salesSumQuery = (clone $q)
             ->join('sale_items', 'sale_items.sale_id', '=', 'sales.id')
             ->leftJoin('products', 'products.id', '=', 'sale_items.product_id');
+        
+        // Agronomist/Admin (bukan bs_inbox): total card hanya tampilkan RELEASED distributor sales
+        if (!$isBs && !$isBsInboxMode) {
+            $salesSumQuery->where('sales.status', Sale::Status_Released);
+        } elseif (!$isBs && $isBsInboxMode) {
+            // BS inbox mode (untuk Agronomist/Admin review): hanya RELEASED BS sales
+            $salesSumQuery->where('sales.status', Sale::Status_Released);
+        }
+        
         $totalSalesSum = (float) ($salesSumQuery
             ->selectRaw("COALESCE(SUM({$amountExpr}), 0) as total_amount")
             ->value('total_amount'));
 
         $qtyQuery = (clone $q)
             ->join('sale_items', 'sale_items.sale_id', '=', 'sales.id');
+        
+        // Agronomist/Admin (bukan bs_inbox): total qty hanya dari RELEASED distributor sales
+        if (!$isBs && !$isBsInboxMode) {
+            $qtyQuery->where('sales.status', Sale::Status_Released);
+        } elseif (!$isBs && $isBsInboxMode) {
+            // BS inbox mode: hanya RELEASED BS sales qty
+            $qtyQuery->where('sales.status', Sale::Status_Released);
+        }
+        
         $totalQtySum = (float) ($qtyQuery
             ->selectRaw('COALESCE(SUM(sale_items.quantity), 0) as total_qty')
             ->value('total_qty'));
-
-        // Agronomist/Admin: total card harus exclude transaksi yang benar-benar dibuat BS/FO.
-        // Jangan kurangi seluruh sale_type=retailer karena data historis impor juga bisa bertipe retailer.
-        // BS users (isBs = true) will see their own totals including ALL their sales (pending + released).
-        if (!$isBs) {
-            $bsAmount = (float) ((clone $q)
-                ->whereIn('sales.created_by_uid', function ($sub) {
-                    $sub->select('id')
-                        ->from('users')
-                        ->whereIn('role', [User::Role_BS, 'field_officer']);
-                })
-                ->join('sale_items', 'sale_items.sale_id', '=', 'sales.id')
-                ->leftJoin('products', 'products.id', '=', 'sale_items.product_id')
-                ->selectRaw("COALESCE(SUM({$amountExpr}), 0) as total_amount")
-                ->value('total_amount'));
-
-            $bsQty = (float) ((clone $q)
-                ->whereIn('sales.created_by_uid', function ($sub) {
-                    $sub->select('id')
-                        ->from('users')
-                        ->whereIn('role', [User::Role_BS, 'field_officer']);
-                })
-                ->join('sale_items', 'sale_items.sale_id', '=', 'sales.id')
-                ->selectRaw('COALESCE(SUM(sale_items.quantity), 0) as total_qty')
-                ->value('total_qty'));
-
-            $totalSalesSum = max(0, $totalSalesSum - $bsAmount);
-            $totalQtySum = max(0, $totalQtySum - $bsQty);
-        }
 
         $byDistributor = collect();
         $byRetailer    = collect();
@@ -376,18 +427,19 @@ class SaleController extends Controller
                 ];
             })->values();
         } else {
-            // Agronomist/Admin: ringkasan per distributor HANYA dari penjualan distributor.
-            // Penjualan BS (sale_type=retailer) tidak boleh menambah nilai penjualan distributor.
-            $grouped = (clone $q)
-                ->where('sales.sale_type', Sale::Type_Distributor)
+            // Agronomist/Admin: ringkasan per distributor dari cakupan distributor
+            $groupedQuery = (clone $q)
+                ->where('sales.status', Sale::Status_Released)
                 ->join('customers as distributor', 'sales.distributor_id', '=', 'distributor.id')
                 ->join('sale_items', 'sale_items.sale_id', '=', 'sales.id')
                 ->leftJoin('products', 'products.id', '=', 'sale_items.product_id')
                 ->selectRaw("sales.distributor_id, distributor.name as distributor_name, COALESCE(SUM({$amountExpr}), 0) as total_amount, COALESCE(SUM(sale_items.quantity), 0) as total_qty, COUNT(DISTINCT sales.id) as total_rows")
                 ->groupBy('sales.distributor_id', 'distributor.name')
                 ->havingRaw("COALESCE(SUM({$amountExpr}), 0) > 0")
-                ->orderByRaw("COALESCE(SUM({$amountExpr}), 0) DESC")
-                ->get();
+                ->orderByRaw("COALESCE(SUM({$amountExpr}), 0) DESC");
+
+            $this->applyDistributorSalesScope($groupedQuery);
+            $grouped = $groupedQuery->get();
 
             $byDistributor = $grouped->map(function ($row) {
                 return [
@@ -411,8 +463,51 @@ class SaleController extends Controller
             'per_page'        => $perPage,
             'total_sales_sum' => $totalSalesSum,
             'total_qty_sum'   => (float) $totalQtySum,
+            'pending_po_count' => (clone $q)->where('sales.status', Sale::Status_Pending)->count(),
             'by_distributor'  => $byDistributor,
             'by_retailer'     => $byRetailer,
+        ]);
+    }
+
+    public function pendingPo(Request $request)
+    {
+        $filter = $request->get('filter', []);
+
+        // Dialog pending selalu menampilkan PO belum release,
+        // jadi filter status dari UI diabaikan.
+        if (is_array($filter)) {
+            unset($filter['status']);
+        } else {
+            $filter = [];
+        }
+
+        $q = Sale::with([
+            'distributor:id,name',
+            'retailer:id,name,type',
+            'created_by_user:id,name',
+            'items:id,sale_id,product_id,quantity,unit',
+            'items.product:id,name',
+        ]);
+
+        $this->applyRoleScope($q);
+        $this->applySalesFilters($q, $filter);
+
+        $q->where('sales.status', Sale::Status_Pending)
+            ->whereExists(function ($sub) {
+                $sub->selectRaw('1')
+                    ->from('sale_items as si')
+                    ->whereColumn('si.sale_id', 'sales.id')
+                    ->where('si.quantity', '>', 0);
+            });
+
+        $rows = $q->orderByDesc('date')
+            ->orderByDesc('id')
+            ->limit(300)
+            ->get();
+
+        return response()->json([
+            'total_rows' => (int) $rows->count(),
+            'rows' => $rows,
         ]);
     }
 
@@ -424,19 +519,41 @@ class SaleController extends Controller
 
         $distributorId = (int) $request->integer('distributor_id');
 
+        // Ambil lot numbers dengan quantity dari StockMovement untuk setiap product
+        $lotNumbers = StockMovement::where('distributor_id', $distributorId)
+            ->where('type', StockMovement::Type_In)
+            ->where('lot_number', '!=', '')
+            ->where('lot_number', '!=', null)
+            ->select('product_id', 'lot_number', 'quantity')
+            ->get()
+            ->groupBy('product_id')
+            ->map(function ($items) {
+                return $items->map(function ($item) {
+                    return [
+                        'lot_number' => $item->lot_number,
+                        'quantity' => (float) $item->quantity,
+                    ];
+                })->values()->all();
+            })
+            ->toArray();
+
         $rows = DistributorStock::with('product:id,name,uom_1,uom_2,weight')
             ->where('distributor_id', $distributorId)
             ->orderBy('product_id')
             ->get()
-            ->map(function ($row) {
+            ->map(function ($row) use ($lotNumbers) {
+                $productId = (int) $row->product_id;
+                $lotList = $lotNumbers[$productId] ?? [];
+                
                 return [
-                    'product_id' => (int) $row->product_id,
+                    'product_id' => $productId,
                     'product_name' => $row->product?->name,
                     'unit' => $row->product?->uom_1 ?: $row->product?->uom_2,
                     'uom_1' => $row->product?->uom_1,
                     'uom_2' => $row->product?->uom_2,
                     'weight' => (float) ($row->product?->weight ?? 0),
                     'stock_quantity' => (float) ($row->stock_quantity ?? 0),
+                    'lot_numbers' => $lotList,
                 ];
             })
             ->values();
@@ -457,9 +574,11 @@ class SaleController extends Controller
         $distributorId = (int) $request->integer('distributor_id');
 
         $q = Sale::with(['distributor:id,name', 'retailer:id,name', 'items.product:id,name'])
-            ->where('distributor_id', $distributorId)
-            // Detail distributor hanya menampilkan transaksi distributor.
-            ->where('sale_type', Sale::Type_Distributor);
+            ->where('distributor_id', $distributorId);
+
+        // Detail distributor mengikuti cakupan distributor yang dipakai di menu utama:
+        // source_from=distributor, plus data legacy sale_type=distributor tanpa source_from.
+        $this->applyDistributorSalesScope($q);
 
         $this->applyRoleScope($q);
         $this->applySalesFilters($q, $filter);
@@ -504,11 +623,17 @@ class SaleController extends Controller
         }
 
         if (!empty($filter['bs_only'])) {
+            // Tampilkan HANYA penjualan yang dibuat oleh BS (untuk Review Penjualan BS)
             $q->whereIn('sales.created_by_uid', function ($sub) {
                 $sub->select('id')
                     ->from('users')
                     ->whereIn('role', [User::Role_BS, 'field_officer']);
             });
+        } elseif (!empty($filter['exclude_bs_sales'])) {
+            // Exclude penjualan BS dari view utama (untuk Agronomist/Admin di menu Penjualan)
+            // Gunakan scope distributor agar histori lama tetap masuk, tanpa memasukkan BS non-distributor.
+            $this->applyDistributorSalesScope($q);
+            $this->applyExcludeBsRetailerScope($q);
         }
 
         if (!empty($filter['search'])) {
@@ -568,14 +693,47 @@ class SaleController extends Controller
 
         // Tentukan source_from: R1 selalu dari distributor, R2 bisa distributor atau r1
         $sourceFrom = null;
-        if ($request->sale_type === Sale::Type_Retailer && !empty($request->retailer_id)) {
+        if ($request->sale_type === Sale::Type_Retailer) {
+            // WAJIB ada retailer_id untuk retailer sales
+            if (empty($request->retailer_id)) {
+                throw ValidationException::withMessages([
+                    'retailer_id' => 'Retailer harus dipilih untuk penjualan tipe Retailer.',
+                ]);
+            }
+
             $retailer = Customer::find($request->retailer_id);
-            if ($retailer && $retailer->type === Customer::Type_R1) {
+            if (!$retailer) {
+                throw ValidationException::withMessages([
+                    'retailer_id' => 'Retailer tidak ditemukan.',
+                ]);
+            }
+
+            // Tentukan source_from: R1 selalu dari distributor, R2 bisa distributor atau r1
+            if ($retailer->type === Customer::Type_R1) {
                 $sourceFrom = Sale::Source_Distributor; // R1 selalu dari distributor
             } else {
                 $sourceFrom = $request->source_from === Sale::Source_R1
                     ? Sale::Source_R1
                     : Sale::Source_Distributor;
+            }
+
+            $sourceCustomer = Customer::find((int) $request->distributor_id);
+            if (!$sourceCustomer) {
+                throw ValidationException::withMessages([
+                    'distributor_id' => 'Sumber stok tidak ditemukan.',
+                ]);
+            }
+
+            if ($sourceFrom === Sale::Source_R1 && $sourceCustomer->type !== Customer::Type_R1) {
+                throw ValidationException::withMessages([
+                    'distributor_id' => 'Jika sumber stok Dari R1, pilih customer bertipe R1.',
+                ]);
+            }
+
+            if ($sourceFrom === Sale::Source_Distributor && $sourceCustomer->type !== Customer::Type_Distributor) {
+                throw ValidationException::withMessages([
+                    'distributor_id' => 'Jika sumber stok Dari Distributor, pilih customer bertipe Distributor.',
+                ]);
             }
         }
 
@@ -600,27 +758,25 @@ class SaleController extends Controller
                         ]);
                     }
 
-                    // Reverse stok lama hanya jika source_from sebelumnya bukan r1
+                    // Reverse stok lama sesuai sumber stok yang tersimpan pada transaksi lama.
                     foreach ($old->items as $oldItem) {
-                        if ($old->source_from !== Sale::Source_R1) {
-                            $oldQtyBase = $oldItem->product
-                                ? $this->convertToBaseQty($oldItem->product, (float) $oldItem->quantity, $oldItem->unit)
-                                : (float) $oldItem->quantity;
+                        $oldQtyBase = $oldItem->product
+                            ? $this->convertToBaseQty($oldItem->product, (float) $oldItem->quantity, $oldItem->unit)
+                            : (float) $oldItem->quantity;
 
-                            $this->adjustStock(
-                                $old->sale_type,
-                                (int) $old->distributor_id,
-                                (int) $oldItem->product_id,
-                                $oldQtyBase,
-                                $oldItem->lot_number,
-                                $oldItem->expired_date,
-                                (int) ($old->retailer_id ?? 0),
-                                (string) $old->date,
-                                                                (int) $old->id,
-                                                                inventoryUserId: (int) ($old->created_by_uid ?? Auth::id()),
-                                reverse: true
-                            );
-                        }
+                        $this->adjustStock(
+                            $old->sale_type,
+                            (int) $old->distributor_id,
+                            (int) $oldItem->product_id,
+                            $oldQtyBase,
+                            $oldItem->lot_number,
+                            $oldItem->expired_date,
+                            (int) ($old->retailer_id ?? 0),
+                            (string) $old->date,
+                            (int) $old->id,
+                            inventoryUserId: (int) ($old->created_by_uid ?? Auth::id()),
+                            reverse: true
+                        );
                     }
                 }
             }
@@ -757,8 +913,7 @@ class SaleController extends Controller
                 $it['sale_id'] = $sale->id;
                 SaleItem::create($it);
 
-                // Adjust stok hanya jika edit released dan source_from bukan r1
-                if (!$isNew && $old && $old->status === Sale::Status_Released && $sale->source_from !== Sale::Source_R1) {
+                if (!$isNew && $old && $old->status === Sale::Status_Released) {
                     $this->adjustStock(
                         $sale->sale_type,
                         (int) $sale->distributor_id,
@@ -766,7 +921,7 @@ class SaleController extends Controller
                         (float) $it['base_quantity'],
                         $it['lot_number'] ?? null,
                         $it['expired_date'] ?? null,
-                        (int) ($sale->retailer_id ?? 0),
+                        (int) $sale->retailer_id,
                         (string) $sale->date,
                         (int) $sale->id,
                         inventoryUserId: (int) ($sale->created_by_uid ?? Auth::id()),
@@ -795,7 +950,7 @@ class SaleController extends Controller
 
     public function releaseData($id)
     {
-        $sale = Sale::with(['distributor:id,name', 'items.product:id,name'])->findOrFail($id);
+        $sale = Sale::with(['distributor:id,name', 'items.product:id,name,uom_1,uom_2,weight'])->findOrFail($id);
 
         if ($sale->status === Sale::Status_Released) {
             return response()->json([
@@ -804,21 +959,28 @@ class SaleController extends Controller
             ], 422);
         }
 
+        $productIds = $sale->items->pluck('product_id')->filter()->map(fn($id) => (int) $id)->unique()->values()->all();
+        $lotOptionsByProduct = $this->getDistributorLotOptions((int) $sale->distributor_id, $productIds);
+
         return response()->json([
             'data' => [
                 'id' => $sale->id,
                 'sale_type' => $sale->sale_type,
                 'date' => $sale->date,
                 'distributor' => $sale->distributor,
-                'items' => $sale->items->map(function ($it) {
+                'items' => $sale->items->map(function ($it) use ($lotOptionsByProduct) {
                     return [
                         'id' => $it->id,
                         'product_id' => $it->product_id,
                         'product_name' => $it->product?->name,
                         'quantity' => (float) $it->quantity,
                         'unit' => $it->unit,
+                        'uom_1' => $it->product?->uom_1,
+                        'uom_2' => $it->product?->uom_2,
+                        'weight' => (float) ($it->product?->weight ?? 0),
                         'lot_number' => $it->lot_number,
                         'expired_date' => $it->expired_date,
+                        'lot_options' => $lotOptionsByProduct[(int) $it->product_id] ?? [],
                     ];
                 })->values(),
             ],
@@ -831,8 +993,9 @@ class SaleController extends Controller
             'items' => 'required|array|min:1',
             'items.*.id' => 'required|integer|exists:sale_items,id',
             'items.*.quantity' => 'nullable|numeric|min:0.01',
+            'items.*.unit' => 'nullable|string|max:20',
             'items.*.remaining_stock' => 'nullable|numeric|min:0',
-            'items.*.lot_number' => 'nullable|string|max:100',
+            'items.*.lot_number' => 'required|string|max:100',
             'items.*.expired_date' => 'nullable|date',
         ]);
 
@@ -847,6 +1010,13 @@ class SaleController extends Controller
                 ]);
             }
 
+            // Ensure retailer_id is set for retailer sales
+            if ($sale->sale_type === Sale::Type_Retailer && empty($sale->retailer_id)) {
+                throw ValidationException::withMessages([
+                    'retailer_id' => 'Retailer sale harus memiliki retailer_id. Data corrupted atau incomplete.',
+                ]);
+            }
+
             $releaseItemMap = collect($request->items)->keyBy('id');
 
             $newTotalAmount = 0;
@@ -855,9 +1025,16 @@ class SaleController extends Controller
                 $payload = $releaseItemMap->get($item->id, []);
                 $lotNumber = $payload['lot_number'] ?? null;
                 $expiredDate = $payload['expired_date'] ?? null;
+                $releaseUnit = $payload['unit'] ?? $item->unit;
 
                 $existingQty = (float) $item->quantity;
                 $releasedQty = isset($payload['quantity']) ? (float) $payload['quantity'] : $existingQty;
+                $existingQtyBase = $item->product
+                    ? $this->convertToBaseQty($item->product, $existingQty, $item->unit)
+                    : $existingQty;
+                $releasedQtyBase = $item->product
+                    ? $this->convertToBaseQty($item->product, $releasedQty, $releaseUnit)
+                    : $releasedQty;
 
                 if ($releasedQty <= 0) {
                     throw ValidationException::withMessages([
@@ -865,7 +1042,7 @@ class SaleController extends Controller
                     ]);
                 }
 
-                if ($releasedQty > $existingQty) {
+                if ($releasedQtyBase > $existingQtyBase) {
                     throw ValidationException::withMessages([
                         'items' => "Qty release item #{$item->id} tidak boleh melebihi qty PO ({$existingQty}).",
                     ]);
@@ -875,9 +1052,13 @@ class SaleController extends Controller
                     ? (float) $payload['remaining_stock']
                     : null;
 
-                $newSubtotal = round($releasedQty * (float) ($item->price ?? 0), 2);
+                $releasedQtyInOriginalUnit = $item->product
+                    ? $this->convertFromBaseQty($item->product, $releasedQtyBase, $item->unit)
+                    : $releasedQty;
+
+                $newSubtotal = round($releasedQtyInOriginalUnit * (float) ($item->price ?? 0), 2);
                 $item->update([
-                    'quantity' => $releasedQty,
+                    'quantity' => $releasedQtyInOriginalUnit,
                     'subtotal' => $newSubtotal,
                     'lot_number' => $lotNumber,
                     'expired_date' => $expiredDate,
@@ -885,34 +1066,29 @@ class SaleController extends Controller
 
                 $newTotalAmount += $newSubtotal;
 
-                // Hanya adjust stok distributor jika barang dari distributor (bukan dari R1)
-                if ($sale->source_from !== Sale::Source_R1) {
-                    $qtyBase = $item->product
-                        ? $this->convertToBaseQty($item->product, $releasedQty, $item->unit)
-                        : $releasedQty;
+                $qtyBase = $releasedQtyBase;
 
-                    $remainingStockBase = null;
-                    if ($remainingStockInput !== null) {
-                        $remainingStockBase = $item->product
-                            ? $this->convertToBaseQty($item->product, $remainingStockInput, $item->unit)
-                            : $remainingStockInput;
-                    }
-
-                    $this->adjustStock(
-                        $sale->sale_type,
-                        (int) $sale->distributor_id,
-                        (int) $item->product_id,
-                        $qtyBase,
-                        $lotNumber,
-                        $expiredDate,
-                        (int) ($sale->retailer_id ?? 0),
-                        (string) $sale->date,
-                        (int) $sale->id,
-                        $remainingStockBase,
-                        inventoryUserId: (int) ($sale->created_by_uid ?? Auth::id()),
-                        reverse: false
-                    );
+                $remainingStockBase = null;
+                if ($remainingStockInput !== null) {
+                    $remainingStockBase = $item->product
+                        ? $this->convertToBaseQty($item->product, $remainingStockInput, $releaseUnit)
+                        : $remainingStockInput;
                 }
+
+                $this->adjustStock(
+                    $sale->sale_type,
+                    (int) $sale->distributor_id,
+                    (int) $item->product_id,
+                    $qtyBase,
+                    $lotNumber,
+                    $expiredDate,
+                    (int) $sale->retailer_id,
+                    (string) $sale->date,
+                    (int) $sale->id,
+                    $remainingStockBase,
+                    inventoryUserId: (int) ($sale->created_by_uid ?? Auth::id()),
+                    reverse: false
+                );
             }
 
             $sale->update([
@@ -971,11 +1147,14 @@ class SaleController extends Controller
                 $movementDate,
                 $saleId,
                 $inventoryUserId,
-                $movType === StockMovement::Type_In
+                $movType === StockMovement::Type_In,
+                $qty
             );
         }
 
         if ($saleType === Sale::Type_Retailer && $retailerId > 0) {
+            // Transfer stok distributor -> retailer:
+            // release menambah stok retailer, reverse/delete mengurangi kembali.
             $deltaInventory = $reverse ? -$qty : $qty;
             $this->syncRetailerInventoryLog(
                 $retailerId,
@@ -984,9 +1163,17 @@ class SaleController extends Controller
                 $lotNumber,
                 $movementDate,
                 $saleId,
-                $remainingStockBase,
+                null,
                 $inventoryUserId
             );
+        } elseif ($saleType === Sale::Type_Retailer && $retailerId <= 0) {
+            // Log warning: retailer_id missing but it's a retailer sale
+            \Log::warning("Retailer sale missing retailer_id", [
+                'saleId' => $saleId,
+                'saleType' => $saleType,
+                'retailerId' => $retailerId,
+                'productId' => $productId,
+            ]);
         }
     }
 
@@ -1009,6 +1196,135 @@ class SaleController extends Controller
         $stock->save();
     }
 
+    private function getDistributorLotOptions(int $distributorId, array $productIds): array
+    {
+        if ($distributorId <= 0 || empty($productIds)) {
+            return [];
+        }
+
+        $productIds = collect($productIds)
+            ->filter(fn($id) => (int) $id > 0)
+            ->map(fn($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        if (empty($productIds)) {
+            return [];
+        }
+
+        $rows = StockMovement::query()
+            ->where('distributor_id', $distributorId)
+            ->whereIn('product_id', $productIds)
+            ->selectRaw("product_id, COALESCE(NULLIF(lot_number, ''), 'NO-LOT') as lot_number, COALESCE(SUM(CASE WHEN type = 'in' THEN quantity ELSE -quantity END), 0) as stock_qty")
+            ->groupBy('product_id', 'lot_number')
+            ->havingRaw('COALESCE(SUM(CASE WHEN type = \'in\' THEN quantity ELSE -quantity END), 0) > 0')
+            ->orderBy('product_id')
+            ->orderBy('lot_number')
+            ->get();
+
+        $mapped = [];
+        foreach ($rows as $row) {
+            $productId = (int) $row->product_id;
+            $qty = round((float) ($row->stock_qty ?? 0), 3);
+            $lotNumber = (string) $row->lot_number;
+
+            $mapped[$productId][] = [
+                'value' => $lotNumber,
+                'label' => $qty > 0 ? "{$lotNumber} ({$qty})" : $lotNumber,
+                'stock_quantity' => $qty,
+            ];
+        }
+
+        // Fallback: sebagian data stok awal disimpan sebagai snapshot di inventory_logs.
+        // Jika per produk belum ada lot dari stock_movements, ambil lot terbaru dari inventory logs.
+        $missingProductIds = collect($productIds)
+            ->reject(fn($productId) => !empty($mapped[(int) $productId]))
+            ->values()
+            ->all();
+
+        if (!empty($missingProductIds)) {
+            $inventoryRows = InventoryLog::query()
+                ->where('customer_id', $distributorId)
+                ->whereIn('product_id', $missingProductIds)
+                ->whereNotNull('lot_package')
+                ->where('lot_package', '!=', '')
+                ->orderByDesc('check_date')
+                ->orderByDesc('id')
+                ->get(['product_id', 'lot_package', 'quantity', 'base_quantity']);
+
+            $latestByProductLot = [];
+            foreach ($inventoryRows as $invRow) {
+                $productId = (int) $invRow->product_id;
+                $lotNumber = (string) $invRow->lot_package;
+                $key = $productId . '|' . $lotNumber;
+
+                if (isset($latestByProductLot[$key])) {
+                    continue;
+                }
+
+                $qty = (float) ($invRow->base_quantity ?? $invRow->quantity ?? 0);
+                if ($qty <= 0) {
+                    continue;
+                }
+
+                $latestByProductLot[$key] = [
+                    'product_id' => $productId,
+                    'value' => $lotNumber,
+                    'label' => $lotNumber . ' (' . round($qty, 3) . ')',
+                    'stock_quantity' => round($qty, 3),
+                ];
+            }
+
+            foreach ($latestByProductLot as $entry) {
+                $productId = (int) $entry['product_id'];
+                $mapped[$productId][] = [
+                    'value' => $entry['value'],
+                    'label' => $entry['label'],
+                    'stock_quantity' => $entry['stock_quantity'],
+                ];
+            }
+
+            // Fallback terakhir: jika stok produk ada di summary distributor_stocks,
+            // tapi lot detail belum tercatat, sediakan opsi NO-LOT agar release tetap bisa dilakukan.
+            $stillMissingProductIds = collect($missingProductIds)
+                ->reject(fn($productId) => !empty($mapped[(int) $productId]))
+                ->values()
+                ->all();
+
+            if (!empty($stillMissingProductIds)) {
+                $stockRows = DistributorStock::query()
+                    ->where('distributor_id', $distributorId)
+                    ->whereIn('product_id', $stillMissingProductIds)
+                    ->where('stock_quantity', '>', 0)
+                    ->get(['product_id', 'stock_quantity']);
+
+                foreach ($stockRows as $stockRow) {
+                    $productId = (int) $stockRow->product_id;
+                    $qty = round((float) ($stockRow->stock_quantity ?? 0), 3);
+
+                    $mapped[$productId][] = [
+                        'value' => 'NO-LOT',
+                        'label' => 'NO-LOT (' . $qty . ')',
+                        'stock_quantity' => $qty,
+                    ];
+                }
+            }
+        }
+
+        foreach ($mapped as $productId => $options) {
+            $uniqueOptions = collect($options)
+                ->unique('value')
+                ->sortBy('value', SORT_NATURAL | SORT_FLAG_CASE)
+                ->values()
+                ->all();
+
+            $mapped[(int) $productId] = $uniqueOptions;
+        }
+
+        return $mapped;
+    }
+
     private function syncDistributorInventoryLogForSale(
         int $distributorId,
         int $productId,
@@ -1016,7 +1332,8 @@ class SaleController extends Controller
         ?string $movementDate,
         ?int $saleId,
         ?int $inventoryUserId,
-        bool $isIn
+        bool $isIn,
+        float $movementQty
     ): void {
         $lotPackage = trim((string) ($lotNumber ?? '')) ?: 'NO-LOT';
         $checkDate = $movementDate ? Carbon::parse($movementDate)->toDateString() : now()->toDateString();
@@ -1045,6 +1362,7 @@ class SaleController extends Controller
             'lot_package' => $lotPackage,
             'quantity' => $inventoryQty['quantity'],
             'base_quantity' => $inventoryQty['base_quantity'],
+            'movement_quantity' => $isIn ? abs($movementQty) : -abs($movementQty),
             'reference_sale_id' => $saleId,
             'notes' => '[DIST_STOCK_SYNC' . ($saleId ? ('#' . $saleId) : '') . '] ' . ($isIn ? 'IN' : 'OUT') . ' via sales',
         ];
@@ -1082,6 +1400,12 @@ class SaleController extends Controller
     private function syncRetailerInventoryLog(int $retailerId, int $productId, float $deltaQty, ?string $lotNumber, ?string $movementDate = null, ?int $saleId = null, ?float $remainingStockBase = null, ?int $inventoryUserId = null): void
     {
         $lotPackage = trim((string) ($lotNumber ?? '')) ?: 'NO-LOT';
+        $product = Product::query()->find($productId);
+        $retailer = Customer::query()->find($retailerId);
+
+        if (!$product) {
+            return;
+        }
 
         $latest = InventoryLog::where('customer_id', $retailerId)
             ->where('product_id', $productId)
@@ -1095,6 +1419,8 @@ class SaleController extends Controller
             ? max(0, $remainingStockBase)
             : max(0, $lastQty + $deltaQty);
 
+        $inventoryQty = $this->buildInventoryQuantities($product, $newQty);
+
         $checkDate = $movementDate
             ? Carbon::parse($movementDate)->toDateString()
             : now()->toDateString();
@@ -1106,9 +1432,11 @@ class SaleController extends Controller
             'check_date' => $checkDate,
             'area' => Auth::user()->work_area ?? '-',
             'lot_package' => $lotPackage,
-            'quantity' => $newQty,
-            'base_quantity' => 1,
+            'quantity' => $inventoryQty['quantity'],
+            'base_quantity' => $inventoryQty['base_quantity'],
+            'movement_quantity' => $deltaQty,
             'reference_sale_id' => $saleId,
+            'retailer_type' => $retailer?->type ?? null,
             'notes' => '[SALE_SYNC' . ($saleId ? ('#' . $saleId) : '') . '] ' . ($deltaQty >= 0 ? 'IN' : 'OUT') . ' via sales',
         ];
 
@@ -1147,27 +1475,25 @@ class SaleController extends Controller
                         'id' => 'Data yang sudah release tidak bisa dihapus.',
                     ]);
                 }
-                // Reverse stock for each item (hanya jika source_from = distributor)
+                // Reverse stock for each item sesuai sumber stok transaksi.
                 foreach ($sale->items as $item) {
-                    if ($sale->source_from !== Sale::Source_R1) {
-                        $qtyBase = $item->product
-                            ? $this->convertToBaseQty($item->product, (float) $item->quantity, $item->unit)
-                            : (float) $item->quantity;
+                    $qtyBase = $item->product
+                        ? $this->convertToBaseQty($item->product, (float) $item->quantity, $item->unit)
+                        : (float) $item->quantity;
 
-                        $this->adjustStock(
-                            $sale->sale_type,
-                            (int) $sale->distributor_id,
-                            (int) $item->product_id,
-                            $qtyBase,
-                            $item->lot_number,
-                            $item->expired_date,
-                            (int) ($sale->retailer_id ?? 0),
-                            (string) $sale->date,
-                            (int) $sale->id,
-                            inventoryUserId: (int) ($sale->created_by_uid ?? Auth::id()),
-                            reverse: true
-                        );
-                    }
+                    $this->adjustStock(
+                        $sale->sale_type,
+                        (int) $sale->distributor_id,
+                        (int) $item->product_id,
+                        $qtyBase,
+                        $item->lot_number,
+                        $item->expired_date,
+                        (int) ($sale->retailer_id ?? 0),
+                        (string) $sale->date,
+                        (int) $sale->id,
+                        inventoryUserId: (int) ($sale->created_by_uid ?? Auth::id()),
+                        reverse: true
+                    );
                 }
 
                 InventoryLog::where('reference_sale_id', (int) $sale->id)->delete();

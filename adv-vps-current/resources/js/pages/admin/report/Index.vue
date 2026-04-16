@@ -5,6 +5,8 @@ import dayjs from "dayjs";
 import { useApiForm } from "@/helpers/useApiForm";
 import { ref, watch, reactive, onMounted } from "vue";
 
+const currentFiscalYear = dayjs().month() >= 3 ? dayjs().year() : dayjs().year() - 1;
+
 const page = usePage();
 const title = "Laporan";
 const form = useApiForm({
@@ -12,6 +14,8 @@ const form = useApiForm({
   report_type: page.props.report_type ?? null,
   user_id: "all",
   product_id: "all",
+  qty_unit: "kg",
+  fiscal_year: currentFiscalYear,
   period: "this_month",
   plant_statuses: [],
   start_date: dayjs().format("YYYY-MM-DD"),
@@ -24,6 +28,8 @@ const filter_options = reactive({
   show_period: false,
   show_download_excel: false,
   showPlantStatus: false,
+  show_qty_unit: false,
+  show_fiscal_year: false,
 });
 
 const report_types = [
@@ -59,6 +65,19 @@ const products = [
   })),
 ];
 
+const qtyUnitOptions = [
+  { value: "kg", label: "KG" },
+  { value: "pcs", label: "PCS" },
+];
+
+const fiscalYearOptions = Array.from({ length: 5 }, (_, index) => {
+  const fiscalYear = currentFiscalYear - 2 + index;
+  return {
+    value: fiscalYear,
+    label: `FY ${fiscalYear}/${fiscalYear + 1}`,
+  };
+});
+
 const users = [
   { value: "all", label: "Semua" },
   ...page.props.users.map((user) => ({
@@ -90,6 +109,14 @@ const submit = (format) => {
 
   if (filter_options.show_product) {
     query.append("product_id", form.product_id);
+  }
+
+  if (filter_options.show_qty_unit) {
+    query.append("qty_unit", form.qty_unit);
+  }
+
+  if (filter_options.show_fiscal_year) {
+    query.append("fiscal_year", form.fiscal_year);
   }
 
   if (filter_options.showPlantStatus) {
@@ -196,6 +223,12 @@ function updateState() {
   if (["client-actual-inventory"].includes(form.report_type)) {
     filter_options.show_user = true;
     filter_options.show_product = true;
+    filter_options.show_qty_unit = true;
+    filter_options.show_download_excel = true;
+  }
+
+  if (["distributor-target-detail"].includes(form.report_type)) {
+    filter_options.show_fiscal_year = true;
     filter_options.show_download_excel = true;
   }
 
@@ -262,6 +295,24 @@ watch(
                 :error="!!form.errors.product_id"
                 :disable="form.processing"
                 :error-message="form.errors.product_id"
+              />
+              <q-select
+                v-if="filter_options.show_qty_unit"
+                v-model="form.qty_unit"
+                label="Satuan Qty"
+                :options="qtyUnitOptions"
+                map-options
+                emit-value
+                :disable="form.processing"
+              />
+              <q-select
+                v-if="filter_options.show_fiscal_year"
+                v-model="form.fiscal_year"
+                :options="fiscalYearOptions"
+                label="Tahun Fiskal"
+                map-options
+                emit-value
+                :disable="form.processing"
               />
               <q-select
                 v-if="filter_options.show_period"

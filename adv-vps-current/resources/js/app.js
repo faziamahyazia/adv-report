@@ -19,6 +19,7 @@ import relativeTime from 'dayjs/plugin/relativeTime'
 import 'dayjs/locale/id'; // Import the Indonesian locale
 import i18n from './i18n';
 import GlobalPlugin from '@/plugins';
+import "@/plugins/echarts";
 
 dayjs.extend(relativeTime)
 // Set Indonesian as the global locale
@@ -27,8 +28,14 @@ dayjs.locale('id');
 createInertiaApp({
   title: (title) => window.CONFIG.APP_NAME + (title ? " - " + title : ""),
   resolve: (name) => {
-    const pages = import.meta.glob("./pages/**/*.vue", { eager: true });
-    return pages[`./pages/${name}.vue`];
+    const pages = import.meta.glob("./pages/**/*.vue");
+    const resolvePage = pages[`./pages/${name}.vue`];
+
+    if (!resolvePage) {
+      throw new Error(`Page not found: ${name}`);
+    }
+
+    return resolvePage();
   },
   setup({ el, App, props, plugin }) {
 
@@ -53,7 +60,7 @@ createInertiaApp({
     VueApp.mount(el);
   },
   progress: {
-    color: '#4B5563',
+    color: '#0a3b82',
   },
 });
 

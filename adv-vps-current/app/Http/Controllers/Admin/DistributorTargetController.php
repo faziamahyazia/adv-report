@@ -42,10 +42,37 @@ class DistributorTargetController extends Controller
         $data = null;
 
         if ($id) {
-            $data = DistributorTarget::with([
-                'distributor:id,name',
-                'product:id,name',
-            ])->findOrFail($id);
+            if ($this->usesLegacyMonthlySchema()) {
+                $base = DistributorTarget::findOrFail($id);
+                $monthly = array_fill_keys(array_keys(DistributorTarget::monthColumns()), 0.0);
+
+                $legacyRows = DistributorTarget::query()
+                    ->where('distributor_id', $base->distributor_id)
+                    ->where('product_id', $base->product_id)
+                    ->where('fiscal_year', $base->fiscal_year)
+                    ->get(['month', 'target_qty', 'notes']);
+
+                foreach ($legacyRows as $legacyRow) {
+                    $column = $this->monthNumberToColumn((int) $legacyRow->month);
+                    if ($column) {
+                        $monthly[$column] += (float) ($legacyRow->target_qty ?? 0);
+                    }
+                }
+
+                $data = (object) array_merge([
+                    'id' => $base->id,
+                    'distributor_id' => $base->distributor_id,
+                    'product_id' => $base->product_id,
+                    'fiscal_year' => $base->fiscal_year,
+                    'notes' => $base->notes,
+                    'total_target_qty' => round(array_sum($monthly), 2),
+                ], $monthly);
+            } else {
+                $data = DistributorTarget::with([
+                    'distributor:id,name',
+                    'product:id,name',
+                ])->findOrFail($id);
+            }
         }
 
         return inertia('admin/distributor-target/Editor', [
@@ -121,6 +148,148 @@ class DistributorTargetController extends Controller
             'total_target_value' => $rows->sum('total_target_value'),
             'total_actual_value' => $rows->sum('total_actual_value'),
             'fiscal_year' => $fiscalYear,
+        ]);
+    }
+
+    public function breakdown($id)
+    {
+        $target = DistributorTarget::findOrFail($id);
+        $monthLabels = DistributorTarget::monthColumns();
+        $monthOrder = array_keys($monthLabels);
+
+        $targetByMonth = array_fill_keys($monthOrder, 0.0);
+
+        if ($this->usesLegacyMonthlySchema()) {
+            $legacyRows = DistributorTarget::query()
+                ->where('distributor_id', $target->distributor_id)
+                ->where('product_id', $target->product_id)
+                ->where('fiscal_year', $target->fiscal_year)
+                ->get(['month', 'target_qty']);
+
+            foreach ($legacyRows as $legacyRow) {
+                $column = $this->monthNumberToColumn((int) $legacyRow->month);
+                if ($column) {
+                    $targetByMonth[$column] += (float) ($legacyRow->target_qty ?? 0);
+                }
+            }
+        } else {
+            foreach ($monthOrder as $column) {
+                $targetByMonth[$column] = (float) ($target->{$column} ?? 0);
+            }
+        }
+
+        $price = (float) (($target->product?->price_1 ?? 0) ?: ($target->product?->price_2 ?? 0));
+        $fiscalYear = (int) $target->fiscal_year;
+        [$startDate, $endDate] = $this->fiscalRange($fiscalYear);
+
+        $actualByMonth = DB::table('sale_items')
+            ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+            ->where('sales.distributor_id', $target->distributor_id)
+            ->where('sale_items.product_id', $target->product_id)
+            ->whereBetween('sales.date', [$startDate, $endDate])
+            ->where('sales.sale_type', Sale::Type_Distributor)
+            ->where('sales.status', Sale::Status_Released)
+            ->selectRaw('MONTH(sales.date) as month_number, SUM(sale_items.quantity) as total_qty')
+            ->groupBy(DB::raw('MONTH(sales.date)'))
+            ->get()
+            ->mapWithKeys(function ($row) {
+                return [(int) $row->month_number => (float) $row->total_qty];
+            })
+            ->all();
+
+        $rows = [];
+        foreach ($monthOrder as $column) {
+            $monthNumber = (int) $this->columnToMonthNumber($column);
+            $actualQty = (float) ($actualByMonth[$monthNumber] ?? 0);
+            $targetQty = (float) ($targetByMonth[$column] ?? 0);
+
+            $rows[] = [
+                'month_key' => $column,
+                'month_label' => $monthLabels[$column] ?? strtoupper(substr($column, 0, 3)),
+                'target_qty' => $targetQty,
+                'actual_qty' => $actualQty,
+                'target_value' => round($targetQty * $price, 2),
+                'actual_value' => round($actualQty * $price, 2),
+                'achievement' => $targetQty > 0 ? round(($actualQty / $targetQty) * 100, 1) : 0,
+            ];
+        }
+
+        return response()->json([
+            'title' => 'Breakdown Bulanan',
+            'subtitle' => ($target->distributor?->name ?? '-') . ' - ' . ($target->product?->name ?? '-') . ' (FY ' . $fiscalYear . '/' . ($fiscalYear + 1) . ')',
+            'rows' => $rows,
+        ]);
+    }
+
+    public function aiBreakdown(Request $request)
+    {
+        $validated = $request->validate([
+            'distributor_id' => 'required|integer|exists:customers,id',
+            'product_id' => 'required|integer|exists:products,id',
+            'fiscal_year' => 'required|integer|min:2020|max:2100',
+            'total_target_qty' => 'required|numeric|min:0',
+        ]);
+
+        $monthColumns = DistributorTarget::monthColumns();
+        $monthKeys = array_keys($monthColumns);
+        $previousFiscalYear = (int) $validated['fiscal_year'] - 1;
+        [$startDate, $endDate] = $this->fiscalRange($previousFiscalYear);
+
+        $monthlyActual = DB::table('sale_items')
+            ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+            ->where('sales.distributor_id', (int) $validated['distributor_id'])
+            ->where('sales.sale_type', Sale::Type_Distributor)
+            ->where('sales.status', Sale::Status_Released)
+            ->whereBetween('sales.date', [$startDate, $endDate])
+            ->where('sale_items.product_id', (int) $validated['product_id'])
+            ->selectRaw('MONTH(sales.date) as month_number, SUM(sale_items.quantity) as total_qty')
+            ->groupBy(DB::raw('MONTH(sales.date)'))
+            ->get()
+            ->mapWithKeys(fn($row) => [(int) $row->month_number => (float) $row->total_qty])
+            ->all();
+
+        $historyStatus = Sale::Status_Released;
+        if (array_sum($monthlyActual) <= 0) {
+            $monthlyActual = DB::table('sale_items')
+                ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+                ->where('sales.distributor_id', (int) $validated['distributor_id'])
+                ->where('sales.sale_type', Sale::Type_Distributor)
+                ->where('sales.status', 'approved')
+                ->whereBetween('sales.date', [$startDate, $endDate])
+                ->where('sale_items.product_id', (int) $validated['product_id'])
+                ->selectRaw('MONTH(sales.date) as month_number, SUM(sale_items.quantity) as total_qty')
+                ->groupBy(DB::raw('MONTH(sales.date)'))
+                ->get()
+                ->mapWithKeys(fn($row) => [(int) $row->month_number => (float) $row->total_qty])
+                ->all();
+
+            if (array_sum($monthlyActual) > 0) {
+                $historyStatus = 'approved';
+            }
+        }
+
+        $weights = [];
+        foreach ($monthKeys as $monthKey) {
+            $monthNumber = (int) $this->columnToMonthNumber($monthKey);
+            $weights[$monthKey] = (float) ($monthlyActual[$monthNumber] ?? 0);
+        }
+
+        $weightSum = array_sum($weights);
+        $hasHistory = $weightSum > 0;
+        if (!$hasHistory) {
+            $weights = array_fill_keys($monthKeys, 1.0);
+        }
+
+        $monthlyTargets = $this->allocateByWeights((float) $validated['total_target_qty'], $weights);
+
+        return response()->json([
+            'mode' => $hasHistory ? 'history_weighted' : 'equal_fallback',
+            'message' => $hasHistory
+                ? "AI breakdown dibuat berdasarkan pola penjualan FY sebelumnya ({$historyStatus})."
+                : 'Data FY sebelumnya tidak ditemukan, fallback ke bagi rata 12 bulan.',
+            'monthly_targets' => $monthlyTargets,
+            'previous_fiscal_year' => $previousFiscalYear,
+            'history_status' => $hasHistory ? $historyStatus : null,
         ]);
     }
 
@@ -504,6 +673,7 @@ class DistributorTargetController extends Controller
             ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
             ->whereBetween('sales.date', [$startDate, $endDate])
             ->where('sales.sale_type', Sale::Type_Distributor)
+            ->where('sales.status', Sale::Status_Released)
             ->selectRaw('sales.distributor_id, sale_items.product_id, SUM(sale_items.quantity) as total_qty')
             ->groupBy('sales.distributor_id', 'sale_items.product_id');
 
@@ -928,6 +1098,53 @@ class DistributorTargetController extends Controller
 
         $sale->total_amount = $subtotal;
         $sale->save();
+    }
+
+    private function allocateByWeights(float $totalQty, array $weights): array
+    {
+        $keys = array_keys($weights);
+        $totalQtyCents = (int) round(max(0, $totalQty) * 100);
+
+        if ($totalQtyCents <= 0 || count($keys) === 0) {
+            return array_fill_keys($keys, 0.0);
+        }
+
+        $weightSum = array_sum($weights);
+        if ($weightSum <= 0) {
+            $weights = array_fill_keys($keys, 1.0);
+            $weightSum = (float) count($keys);
+        }
+
+        $allocation = [];
+        $remainders = [];
+        $allocatedCents = 0;
+
+        foreach ($keys as $key) {
+            $exact = ((float) ($weights[$key] ?? 0) / $weightSum) * $totalQtyCents;
+            $base = (int) floor($exact);
+            $allocation[$key] = $base;
+            $remainders[$key] = $exact - $base;
+            $allocatedCents += $base;
+        }
+
+        $remaining = $totalQtyCents - $allocatedCents;
+        if ($remaining > 0) {
+            arsort($remainders);
+            foreach ($remainders as $key => $remainder) {
+                if ($remaining <= 0) {
+                    break;
+                }
+                $allocation[$key] += 1;
+                $remaining--;
+            }
+        }
+
+        $result = [];
+        foreach ($keys as $key) {
+            $result[$key] = round(((int) ($allocation[$key] ?? 0)) / 100, 2);
+        }
+
+        return $result;
     }
 
     private function defaultFiscalYear(): int

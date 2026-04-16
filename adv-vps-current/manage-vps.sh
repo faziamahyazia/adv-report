@@ -5,6 +5,10 @@ APP_PATH="${APP_PATH:-/var/www/adv}"
 BACKUP_PATH="${BACKUP_PATH:-/root/deploy-backups}"
 LOG_RETENTION_DAYS="${LOG_RETENTION_DAYS:-14}"
 BACKUP_RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-30}"
+TMP_RETENTION_DAYS="${TMP_RETENTION_DAYS:-3}"
+JOURNAL_RETENTION_DAYS="${JOURNAL_RETENTION_DAYS:-7}"
+REMOVE_NODE_MODULES="${REMOVE_NODE_MODULES:-0}"
+BACKUP_PREFIXES="${BACKUP_PREFIXES:-backup_,reminder-ui-,complaint-bs-fix-}"
 LARGE_FILE_SIZE_MB="${LARGE_FILE_SIZE_MB:-100}"
 TOP_N="${TOP_N:-30}"
 
@@ -44,18 +48,24 @@ Penggunaan:
   ./manage-vps.sh audit
   ./manage-vps.sh db-audit --db-name nama_db [--db-user root] [--db-pass '***']
   ./manage-vps.sh cleanup [--apply]
+  ./manage-vps.sh prune-unused [--apply]
   ./manage-vps.sh help
 
 Perintah:
   audit      Audit filesystem: disk usage, folder besar, file besar, log/upload size.
   db-audit   Audit database MySQL/MariaDB: ukuran tabel & jumlah baris tabel besar.
   cleanup    Bersihkan log/backup lama. Default DRY-RUN, pakai --apply untuk eksekusi.
+  prune-unused  Cleanup tambahan item tidak terpakai (apt/journal/tmp/backup), default DRY-RUN.
 
 Environment variable (opsional):
   APP_PATH=/var/www/adv
   BACKUP_PATH=/root/deploy-backups
   LOG_RETENTION_DAYS=14
   BACKUP_RETENTION_DAYS=30
+  TMP_RETENTION_DAYS=3
+  JOURNAL_RETENTION_DAYS=7
+  REMOVE_NODE_MODULES=0
+  BACKUP_PREFIXES=backup_,reminder-ui-,complaint-bs-fix-
   LARGE_FILE_SIZE_MB=100
   TOP_N=30
   DB_HOST=127.0.0.1
@@ -68,6 +78,7 @@ Contoh:
   APP_PATH=/var/www/adv ./manage-vps.sh audit
   DB_NAME=advanta DB_USER=root ./manage-vps.sh db-audit
   ./manage-vps.sh cleanup --apply
+  REMOVE_NODE_MODULES=1 ./manage-vps.sh prune-unused --apply
 EOF
 }
 
@@ -209,6 +220,100 @@ cleanup_data() {
   ok "Cleanup selesai."
 }
 
+run_or_preview() {
+  local mode="$1"
+  shift
+  local action="$*"
+
+  if [[ "$mode" == "apply" ]]; then
+    eval "$action"
+  else
+    echo "[DRY-RUN] $action"
+  fi
+}
+
+cleanup_backup_prefixes() {
+  local mode="$1"
+  local base_path="$2"
+  local prefixes_csv="$3"
+
+  if [[ ! -d "$base_path" ]]; then
+    warn "BACKUP_PATH tidak ditemukan: $base_path"
+    return
+  fi
+
+  IFS=',' read -r -a prefixes <<< "$prefixes_csv"
+  for prefix in "${prefixes[@]}"; do
+    prefix="${prefix//[[:space:]]/}"
+    [[ -z "$prefix" ]] && continue
+
+    mapfile -t items < <(find "$base_path" -maxdepth 1 -mindepth 1 \( -type d -o -type f \) -name "${prefix}*" -printf "%T@|%p\n" 2>/dev/null | sort -nr)
+    if [[ ${#items[@]} -eq 0 ]]; then
+      continue
+    fi
+
+    local keep_item="${items[0]#*|}"
+    msg "Backup prefix '$prefix' -> keep: $keep_item"
+
+    if [[ ${#items[@]} -le 1 ]]; then
+      continue
+    fi
+
+    local i
+    for ((i=1; i<${#items[@]}; i++)); do
+      local target="${items[$i]#*|}"
+      run_or_preview "$mode" "rm -rf -- \"$target\""
+    done
+  done
+}
+
+prune_unused() {
+  require_cmd find
+
+  local mode="dry-run"
+  if [[ "${1:-}" == "--apply" ]]; then
+    mode="apply"
+  elif [[ -n "${1:-}" ]]; then
+    err "Argumen tidak dikenal untuk prune-unused: $1"
+    usage
+    exit 1
+  fi
+
+  msg "Mode prune-unused: $mode"
+  warn "Akan membersihkan cache apt, journal lama, file tmp lama, backup per-prefix (sisakan 1 terbaru)."
+  warn "Node modules hanya ikut dibersihkan jika REMOVE_NODE_MODULES=1"
+
+  msg "[1/5] Apt cache"
+  run_or_preview "$mode" "apt-get autoremove --purge -y"
+  run_or_preview "$mode" "apt-get clean"
+
+  msg "[2/5] Journal logs > ${JOURNAL_RETENTION_DAYS} hari"
+  run_or_preview "$mode" "journalctl --vacuum-time=${JOURNAL_RETENTION_DAYS}d"
+
+  msg "[3/5] Temporary files > ${TMP_RETENTION_DAYS} hari"
+  if [[ "$mode" == "dry-run" ]]; then
+    find /tmp /var/tmp -xdev -type f -mtime +"$TMP_RETENTION_DAYS" -print 2>/dev/null || true
+  else
+    find /tmp /var/tmp -xdev -type f -mtime +"$TMP_RETENTION_DAYS" -delete 2>/dev/null || true
+  fi
+
+  msg "[4/5] Backup cleanup by prefix di $BACKUP_PATH"
+  cleanup_backup_prefixes "$mode" "$BACKUP_PATH" "$BACKUP_PREFIXES"
+
+  msg "[5/5] Node modules (opsional)"
+  if [[ "$REMOVE_NODE_MODULES" == "1" ]]; then
+    if [[ "$mode" == "dry-run" ]]; then
+      find /var/www -xdev -type d -name "node_modules" -print 2>/dev/null || true
+    else
+      find /var/www -xdev -type d -name "node_modules" -prune -exec rm -rf -- {} + 2>/dev/null || true
+    fi
+  else
+    warn "Lewati node_modules cleanup. Set REMOVE_NODE_MODULES=1 jika ingin aktifkan."
+  fi
+
+  ok "Prune-unused selesai."
+}
+
 main() {
   local cmd="${1:-help}"
   shift || true
@@ -223,6 +328,9 @@ main() {
       ;;
     cleanup)
       cleanup_data "$@"
+      ;;
+    prune-unused)
+      prune_unused "$@"
       ;;
     help|-h|--help)
       usage

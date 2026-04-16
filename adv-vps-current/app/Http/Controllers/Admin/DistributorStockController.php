@@ -183,45 +183,32 @@ class DistributorStockController extends Controller
         $perPage = (int) $request->get('per_page', 25);
         $filter  = $request->get('filter', []);
 
-        $signedQtySql = "SUM(CASE WHEN sm.type = 'in' THEN sm.quantity ELSE -sm.quantity END)";
-
-        $q = StockMovement::query()
-            ->from('stock_movements as sm')
-            ->join('customers as distributor', 'distributor.id', '=', 'sm.distributor_id')
-            ->join('products as product', 'product.id', '=', 'sm.product_id')
+        $q = DistributorStock::query()
+            ->from('distributor_stocks as ds')
+            ->join('customers as distributor', 'distributor.id', '=', 'ds.distributor_id')
+            ->join('products as product', 'product.id', '=', 'ds.product_id')
             ->selectRaw(
-                "CONCAT(sm.distributor_id, '-', sm.product_id, '-', COALESCE(sm.lot_number, ''), '-', COALESCE(DATE(sm.expired_date), '')) as id,
-                 sm.distributor_id,
+                "CONCAT(ds.distributor_id, '-', ds.product_id) as id,
+                 ds.distributor_id,
                  distributor.name as distributor_name,
-                 sm.product_id,
+                 ds.product_id,
                  product.name as product_name,
                  COALESCE(product.uom_1, product.uom_2, '') as unit,
                  product.uom_1,
                  product.uom_2,
                  product.weight,
-                 COALESCE(sm.lot_number, '') as lot_number,
-                 sm.expired_date,
-                 {$signedQtySql} as stock_quantity,
-                 MIN(CASE WHEN sm.type = 'in' AND sm.reference = 'sale' THEN sm.created_datetime END) as release_datetime"
+                 NULL as lot_number,
+                 NULL as expired_date,
+                 NULL as release_datetime,
+                 ds.stock_quantity as stock_quantity"
             )
-            ->groupBy(
-                'sm.distributor_id',
-                'distributor.name',
-                'sm.product_id',
-                'product.name',
-                'product.uom_1',
-                'product.uom_2',
-                'product.weight',
-                'sm.lot_number',
-                'sm.expired_date'
-            )
-            ->havingRaw("{$signedQtySql} > 0");
+            ->where('ds.stock_quantity', '>', 0);
 
-        if (!empty($filter['distributor_id'])) {
-            $q->where('sm.distributor_id', $filter['distributor_id']);
+        if (!empty($filter['distributor_id']) && $filter['distributor_id'] !== 'all') {
+            $q->where('ds.distributor_id', (int) $filter['distributor_id']);
         }
-        if (!empty($filter['product_id'])) {
-            $q->where('sm.product_id', $filter['product_id']);
+        if (!empty($filter['product_id']) && $filter['product_id'] !== 'all') {
+            $q->where('ds.product_id', (int) $filter['product_id']);
         }
 
         $total = DB::query()->fromSub($q, 'g')->count();
@@ -233,11 +220,18 @@ class DistributorStockController extends Controller
             ->orderBy('lot_number')
             ->skip(($page - 1) * $perPage)
             ->take($perPage)
-            ->get()
-            ->map(function ($row) {
+            ->get();
+
+        $lotMetaByPair = $this->resolveLotMetaForDistributorProducts($items);
+
+        $items = $items->map(function ($row) use ($lotMetaByPair) {
+                $pairKey = ((int) $row->distributor_id) . '-' . ((int) $row->product_id);
+                $lotMeta = $lotMetaByPair[$pairKey] ?? null;
+
                 $agingDays = null;
-                if (!empty($row->release_datetime)) {
-                    $agingDays = now()->startOfDay()->diffInDays(\Carbon\Carbon::parse($row->release_datetime)->startOfDay());
+                $releaseDatetime = $lotMeta['release_datetime'] ?? $row->release_datetime;
+                if (!empty($releaseDatetime)) {
+                    $agingDays = abs(now()->startOfDay()->diffInDays(\Carbon\Carbon::parse($releaseDatetime)->startOfDay(), false));
                 }
 
                 return [
@@ -252,9 +246,10 @@ class DistributorStockController extends Controller
                         'uom_2' => $row->uom_2,
                         'weight' => (float) ($row->weight ?? 0),
                     ],
-                    'lot_number' => $row->lot_number ?: null,
-                    'expired_date' => $row->expired_date,
-                    'release_datetime' => $row->release_datetime,
+                    'lot_number' => $lotMeta['lot_number'] ?? null,
+                    'lot_display' => $lotMeta['lot_display'] ?? null,
+                    'expired_date' => $lotMeta['expired_date'] ?? $row->expired_date,
+                    'release_datetime' => $releaseDatetime,
                     'aging_days' => $agingDays,
                     'stock_quantity' => (float) $row->stock_quantity,
                 ];
@@ -267,6 +262,71 @@ class DistributorStockController extends Controller
             'current_page' => $page,
             'per_page'     => $perPage,
         ]);
+    }
+
+    private function resolveLotMetaForDistributorProducts($rows): array
+    {
+        $pairs = collect($rows)
+            ->map(fn($row) => [
+                'distributor_id' => (int) ($row->distributor_id ?? 0),
+                'product_id' => (int) ($row->product_id ?? 0),
+            ])
+            ->filter(fn($pair) => $pair['distributor_id'] > 0 && $pair['product_id'] > 0)
+            ->values();
+
+        if ($pairs->isEmpty()) {
+            return [];
+        }
+
+        $pairKeys = $pairs
+            ->map(fn($pair) => $pair['distributor_id'] . '-' . $pair['product_id'])
+            ->unique()
+            ->flip();
+
+        $distributorIds = $pairs->pluck('distributor_id')->unique()->values()->all();
+        $productIds = $pairs->pluck('product_id')->unique()->values()->all();
+
+        $signedQtySql = "SUM(CASE WHEN type = 'in' THEN quantity ELSE -quantity END)";
+
+        $lotRows = StockMovement::query()
+            ->whereIn('distributor_id', $distributorIds)
+            ->whereIn('product_id', $productIds)
+            ->selectRaw(
+                "distributor_id,
+                 product_id,
+                 lot_number,
+                 expired_date,
+                 MIN(CASE WHEN type = 'in' THEN created_datetime END) as release_datetime,
+                 {$signedQtySql} as stock_qty"
+            )
+            ->groupBy('distributor_id', 'product_id', 'lot_number', 'expired_date')
+            ->havingRaw("{$signedQtySql} > 0")
+            ->orderByDesc('stock_qty')
+            ->get()
+            ->filter(function ($row) use ($pairKeys) {
+                $pairKey = ((int) $row->distributor_id) . '-' . ((int) $row->product_id);
+                return isset($pairKeys[$pairKey]);
+            });
+
+        return $lotRows
+            ->groupBy(fn($row) => ((int) $row->distributor_id) . '-' . ((int) $row->product_id))
+            ->map(function ($group) {
+                $primary = $group->first();
+                $lotRaw = trim((string) ($primary->lot_number ?? ''));
+                $isNoLot = ($lotRaw === '' || strtoupper($lotRaw) === 'NO-LOT');
+                $expiredDate = !empty($primary->expired_date)
+                    ? Carbon::parse($primary->expired_date)->toDateString()
+                    : null;
+
+                return [
+                    // Keep raw lot nullable for edit/delete payload compatibility.
+                    'lot_number' => $isNoLot ? null : $lotRaw,
+                    'lot_display' => $isNoLot ? 'NO-LOT' : $lotRaw,
+                    'expired_date' => $expiredDate,
+                    'release_datetime' => $primary->release_datetime,
+                ];
+            })
+            ->toArray();
     }
 
     public function add()
@@ -459,6 +519,75 @@ class DistributorStockController extends Controller
         });
 
         return response()->json(['message' => 'Penyesuaian stok berhasil disimpan.']);
+    }
+
+    public function updateMeta(Request $request)
+    {
+        $currentUser = Auth::user();
+        if (!$this->canDeleteStock($currentUser)) {
+            abort(403, 'Hanya Admin/Agronomis yang dapat mengubah metadata stok distributor.');
+        }
+
+        $request->validate([
+            'distributor_id' => 'required|integer|exists:customers,id',
+            'product_id' => 'required|integer|exists:products,id',
+            'old_lot_number' => 'nullable|string|max:100',
+            'old_expired_date' => 'nullable|date',
+            'lot_number' => 'nullable|string|max:100',
+            'expired_date' => 'nullable|date',
+        ]);
+
+        DB::transaction(function () use ($request) {
+            $oldLot = $request->filled('old_lot_number') ? trim((string) $request->old_lot_number) : null;
+            $newLot = $request->filled('lot_number') ? trim((string) $request->lot_number) : null;
+            $oldExpired = $request->filled('old_expired_date')
+                ? Carbon::parse((string) $request->old_expired_date)->toDateString()
+                : null;
+            $newExpired = $request->filled('expired_date')
+                ? Carbon::parse((string) $request->expired_date)->toDateString()
+                : null;
+
+            $movementQuery = StockMovement::query()
+                ->where('distributor_id', (int) $request->distributor_id)
+                ->where('product_id', (int) $request->product_id);
+
+            if ($oldLot === null || $oldLot === '') {
+                $movementQuery->whereNull('lot_number');
+            } else {
+                $movementQuery->where('lot_number', $oldLot);
+            }
+
+            if ($oldExpired !== null) {
+                $movementQuery->whereDate('expired_date', $oldExpired);
+            } else {
+                $movementQuery->whereNull('expired_date');
+            }
+
+            $movementCount = $movementQuery->count();
+            if ($movementCount <= 0) {
+                throw ValidationException::withMessages([
+                    'lot_number' => 'Data stok dengan lot/expired lama tidak ditemukan.',
+                ]);
+            }
+
+            $movementQuery->update([
+                'lot_number' => $newLot,
+                'expired_date' => $newExpired,
+            ]);
+
+            $inventoryQuery = InventoryLog::query()
+                ->where('customer_id', (int) $request->distributor_id)
+                ->where('product_id', (int) $request->product_id);
+
+            $oldLotPackage = $oldLot ?: 'NO-LOT';
+            $newLotPackage = $newLot ?: 'NO-LOT';
+
+            $inventoryQuery->where('lot_package', $oldLotPackage)->update([
+                'lot_package' => $newLotPackage,
+            ]);
+        });
+
+        return response()->json(['message' => 'Metadata lot distributor berhasil diperbarui.']);
     }
 
     public function movements($distributorId)

@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Models\Setting;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Middleware;
 
@@ -32,12 +33,16 @@ class HandleInertiaRequests extends Middleware
     public function share(Request $request): array
     {
         $user = $request->user();
+        $companyName = Cache::remember('settings:company_name', 3600, function () {
+            return Setting::value('company_name') ?: 'My Company';
+        });
+
         return [
             ...parent::share($request),
             'auth' => [
                 'user' => $user ? [
                     'id' => $user->id,
-                    'company_name' => Setting::value('company_name', 'My Company'),
+                    'company_name' => $companyName,
                     'name' => $user->name,
                     'username' => $user->username,
                     'role' => $user->role,

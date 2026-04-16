@@ -1,10 +1,63 @@
 <script setup>
+import axios from "axios";
 import { router, usePage } from "@inertiajs/vue3";
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { formatNumber, plantAge, wa_send_url } from "@/helpers/utils";
 import ImageViewer from "@/components/ImageViewer.vue";
+import { Notify } from "quasar";
 const page = usePage();
 const showViewer = ref(false);
+const coverImageFile = ref(null);
+const savingCover = ref(false);
+
+const coverImagePath = computed(() => page.props.data.image_path || page.props.data.latest_visit_image_path || null);
+
+const canChangeCoverPhoto = computed(() => {
+  const role = page.props.auth?.user?.role;
+  if (role === 'admin') return true;
+  if (role === 'bs') return Number(page.props.auth?.user?.id) === Number(page.props.data.user_id);
+  if (role === 'agronomist') return Number(page.props.auth?.user?.id) === Number(page.props.data.user?.parent_id);
+  return false;
+});
+
+const submitCoverPhoto = async (source, visitId = null) => {
+  if (!canChangeCoverPhoto.value) return;
+
+  if (source === 'upload' && !coverImageFile.value) {
+    Notify.create({ color: 'warning', message: 'Pilih foto dari galeri terlebih dahulu.' });
+    return;
+  }
+
+  savingCover.value = true;
+  try {
+    const formData = new FormData();
+    formData.append('source', source);
+    if (visitId) formData.append('visit_id', String(visitId));
+    if (source === 'upload' && coverImageFile.value) {
+      formData.append('image', coverImageFile.value);
+    }
+
+    const response = await axios.post(route('admin.demo-plot.cover-photo', { id: page.props.data.id }), formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+
+    Notify.create({ color: 'positive', message: response.data?.message || 'Foto depan berhasil diperbarui.' });
+    coverImageFile.value = null;
+    router.reload({ only: ['data'] });
+  } catch (error) {
+    Notify.create({
+      color: 'negative',
+      message: error?.response?.data?.message || error?.response?.data?.errors?.image?.[0] || error?.response?.data?.errors?.visit_id?.[0] || 'Gagal memperbarui foto depan.',
+    });
+  } finally {
+    savingCover.value = false;
+  }
+};
+
+const onCoverFileChange = (event) => {
+  const file = event?.target?.files?.[0];
+  coverImageFile.value = file || null;
+};
 </script>
 
 <template>
@@ -115,18 +168,44 @@ const showViewer = ref(false);
         <td>:</td>
         <td>{{ page.props.data.notes ? page.props.data.notes : "" }}</td>
       </tr>
-      <template v-if="page.props.data.image_path">
+      <template v-if="coverImagePath">
         <tr>
           <td colspan="3" class="bg-white">
             <div class="q-mt-md">
-              Foto Dokumentasi:<br />
+              Foto Depan Demo Plot:<br />
               <q-img
-                :src="`/${page.props.data.image_path}`"
+                :src="`/${coverImagePath}`"
                 class="q-mt-none"
                 style="max-width: 500px"
                 :style="{ border: '1px solid #ddd' }"
                 @click="showViewer = true"
               />
+              <div v-if="canChangeCoverPhoto" class="q-mt-sm q-gutter-sm">
+                <input
+                  type="file"
+                  accept="image/*"
+                  class="q-mb-sm"
+                  @change="onCoverFileChange"
+                />
+                <div class="row q-gutter-sm">
+                  <q-btn
+                    color="primary"
+                    size="sm"
+                    icon="photo_library"
+                    label="Set dari Galeri"
+                    :loading="savingCover"
+                    @click="submitCoverPhoto('upload')"
+                  />
+                  <q-btn
+                    color="secondary"
+                    size="sm"
+                    icon="restart_alt"
+                    label="Kembali ke Default"
+                    :loading="savingCover"
+                    @click="submitCoverPhoto('reset')"
+                  />
+                </div>
+              </div>
             </div>
           </td>
         </tr>
@@ -217,6 +296,6 @@ const showViewer = ref(false);
 
   <ImageViewer
     v-model="showViewer"
-    :imageUrl="`/${page.props.data.image_path}`"
+    :imageUrl="`/${coverImagePath}`"
   />
 </template>

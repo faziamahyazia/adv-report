@@ -221,6 +221,10 @@ class ActivityController extends Controller
         $item->responded_by_id = $action == 'reset' ? null : $current_user->id;
         $item->save();
 
+        if ($action == 'approve') {
+            app(FonteWhatsAppService::class)->sendActivityApprovedToBs($item->user, $item, $current_user);
+        }
+
         return response()->json([
             'message' => "Kegiatan #$item->id telah direspon.",
             'data' => $item

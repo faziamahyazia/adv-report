@@ -183,20 +183,46 @@
                     min="0"
                     max="100"
                     step="0.01"
+                    :disable="form.farmer_source === 'manual' && form.population_calc_mode === 'from_population'"
                     hint="Contoh: 85 berarti 85% biji tumbuh"
                     :error="Boolean(errors.germination_percentage)"
                     :error-message="firstError(errors.germination_percentage)"
                   />
                 </div>
 
+                <div class="col-12 col-md-6 col-xl-6" v-if="form.farmer_source === 'manual'">
+                  <q-option-group
+                    v-model="form.population_calc_mode"
+                    :options="populationCalcModeOptions"
+                    type="radio"
+                    inline
+                    dense
+                    label="Mode Perhitungan Estimasi"
+                  />
+                </div>
+
                 <div class="col-12 col-md-6 col-xl-3">
                   <q-input
-                    :model-value="selectedDemoPlot ? safeNumber(selectedDemoPlot.population, 0) : '-'"
+                    v-if="form.farmer_source === 'manual' && form.population_calc_mode === 'from_population'"
+                    v-model.number="form.estimated_population_input"
+                    type="number"
+                    outlined
+                    dense
+                    label="Estimasi Populasi (pohon)"
+                    min="0"
+                    hint="Isi populasi, germinasi akan terhitung otomatis"
+                    :error="Boolean(errors.germination_percentage)"
+                    :error-message="firstError(errors.germination_percentage)"
+                  />
+                  <q-input
+                    v-else
+                    :model-value="estimatedPopulation !== null ? safeNumber(estimatedPopulation, 0) : '-'"
                     type="number"
                     outlined
                     dense
                     disable
-                    label="Populasi Tanam dari Demo Plot (pohon)"
+                    label="Estimasi Populasi (pohon)"
+                    :hint="form.farmer_source === 'demo_plot' ? 'Otomatis dari populasi demo plot terpilih' : 'Otomatis dari: Jumlah PCS × Biji/PCS × Germinasi%'"
                     min="0"
                   />
                 </div>
@@ -397,8 +423,8 @@
                   </q-item-section>
                 </q-item>
                 <q-item>
-                  <q-item-section>Populasi Tanam</q-item-section>
-                  <q-item-section side>{{ selectedDemoPlot ? safeNumber(selectedDemoPlot.population, 0) : '-' }} pohon</q-item-section>
+                  <q-item-section>Estimasi Populasi</q-item-section>
+                  <q-item-section side>{{ estimatedPopulation !== null ? `${safeNumber(estimatedPopulation, 0)} pohon` : '-' }}</q-item-section>
                 </q-item>
                 <q-item>
                   <q-item-section>Produktivitas</q-item-section>
@@ -452,6 +478,10 @@ const farmerSourceOptions = [
   { label: "Dropdown Demo Plot", value: "demo_plot" },
   { label: "Input Manual", value: "manual" },
 ];
+const populationCalcModeOptions = [
+  { label: "Isi Germinasi -> Estimasi Populasi", value: "from_germination" },
+  { label: "Isi Estimasi Populasi -> Germinasi", value: "from_population" },
+];
 
 const submitting = ref(false);
 const errors = ref({});
@@ -470,6 +500,8 @@ const form = reactive({
   putren_quantity: null,
   total_pieces: null,
   germination_percentage: null,
+  population_calc_mode: "from_germination",
+  estimated_population_input: null,
   harvest_unit: "kg",
   is_multiple_harvest: false,
   harvest_cycles: [
@@ -572,6 +604,24 @@ const estimatedGrownPlants = computed(() => {
   return null;
 });
 
+const estimatedPopulation = computed(() => {
+  if (form.farmer_source === "demo_plot") {
+    const plotPopulation = Number(selectedDemoPlot.value?.population || 0);
+    return plotPopulation > 0 ? plotPopulation : null;
+  }
+
+  if (form.population_calc_mode === "from_population") {
+    const manualPopulation = Number(form.estimated_population_input || 0);
+    return manualPopulation > 0 ? Math.round(manualPopulation) : null;
+  }
+
+  if (estimatedGrownPlants.value !== null && estimatedGrownPlants.value > 0) {
+    return Math.round(estimatedGrownPlants.value);
+  }
+
+  return null;
+});
+
 const productivityPerGrownPlant = computed(() => {
   if (estimatedGrownPlants.value && estimatedGrownPlants.value > 0 && totalHarvestQuantity.value > 0) {
     return totalHarvestQuantity.value / estimatedGrownPlants.value;
@@ -626,7 +676,48 @@ watch(
   (source) => {
     if (source === "manual") {
       form.demo_plot_id = null;
+      return;
     }
+
+    form.population_calc_mode = "from_germination";
+    form.estimated_population_input = null;
+  }
+);
+
+watch(
+  () => form.population_calc_mode,
+  (mode) => {
+    if (form.farmer_source !== "manual") {
+      return;
+    }
+
+    if (mode === "from_population") {
+      const fallbackPopulation =
+        estimatedGrownPlants.value !== null && estimatedGrownPlants.value > 0
+          ? Math.round(estimatedGrownPlants.value)
+          : null;
+      form.estimated_population_input = form.estimated_population_input ?? fallbackPopulation;
+    }
+  }
+);
+
+watch(
+  [() => form.farmer_source, () => form.population_calc_mode, totalSeedCount, () => form.estimated_population_input],
+  ([source, mode, seeds, populationInput]) => {
+    if (source !== "manual" || mode !== "from_population") {
+      return;
+    }
+
+    const totalSeeds = Number(seeds || 0);
+    const population = Number(populationInput || 0);
+
+    if (totalSeeds > 0 && population > 0) {
+      const computedGermination = (population / totalSeeds) * 100;
+      form.germination_percentage = Number(Math.min(100, computedGermination).toFixed(2));
+      return;
+    }
+
+    form.germination_percentage = null;
   }
 );
 
@@ -636,7 +727,6 @@ watch(selectedDemoPlot, (plot) => {
   }
   form.farmer_name = plot.owner_name || "";
   form.product_id = plot.product_id || null;
-  form.total_pieces = Number(plot.population || 0) || null;
 
   const referenceDate = form.harvest_date || dayjs().format("YYYY-MM-DD");
   if (plot.plant_date) {
@@ -717,6 +807,8 @@ function resetForm() {
   form.putren_quantity = null;
   form.total_pieces = null;
   form.germination_percentage = null;
+  form.population_calc_mode = "from_germination";
+  form.estimated_population_input = null;
   form.harvest_unit = "kg";
   form.farmer_source = "demo_plot";
   form.demo_plot_id = null;

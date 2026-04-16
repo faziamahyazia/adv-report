@@ -18,6 +18,7 @@ const rows = ref([]);
 const loading = ref(false);
 const totalSalesSum = ref(0);
 const totalQtySum = ref(0);
+const pendingPoCount = ref(0);
 const byDistributor = ref([]);
 const byRetailer = ref([]);
 const tableRef = ref(null);
@@ -37,6 +38,9 @@ const releaseItems = ref([]);
 const distributorDetailDialog = ref(false);
 const distributorDetailLoading = ref(false);
 const distributorDetailRows = ref([]);
+const pendingPoDialog = ref(false);
+const pendingPoLoading = ref(false);
+const pendingPoRows = ref([]);
 const distributorDetailSummary = reactive({
   distributor_name: "",
   total_amount: 0,
@@ -245,6 +249,121 @@ const statusLabel = (row) =>
 const statusColor = (row) =>
   row?.status === "released" ? "positive" : "warning";
 
+const normalizeUnit = (unit) => String(unit || "").trim().toLowerCase();
+
+const formatQuantityTrimmed = (value, decimals = 3) => {
+  const formatted = formatNumber(value, "id-ID", decimals);
+  return formatted.endsWith(",000") ? formatted.slice(0, -4) : formatted;
+};
+
+const formatReleaseStock = (value, decimals = 3) => {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric)) return "0";
+
+  // Release stock should be compact: no grouping and no trailing zeros for values >= 1.
+  if (Math.abs(numeric) >= 1) {
+    return numeric
+      .toFixed(decimals)
+      .replace(".", ",")
+      .replace(/,?0+$/, "");
+  }
+
+  return numeric.toFixed(decimals).replace(".", ",");
+};
+
+const toBaseQtyRelease = (item, qty, unit) => {
+  const numericQty = Number(qty || 0);
+  if (numericQty <= 0) return 0;
+
+  const uom1 = normalizeUnit(item.uom_1);
+  const uom2 = normalizeUnit(item.uom_2);
+  const unitNorm = normalizeUnit(unit || item.unit || item.uom_1);
+
+  if (!unitNorm || !uom1 || unitNorm === uom1) return numericQty;
+
+  const weightGram = Number(item.weight || 0);
+  if (unitNorm === uom2 && weightGram > 0) {
+    if (uom1 === "kg" && uom2 === "pcs") return Number(((numericQty * weightGram) / 1000).toFixed(6));
+    if (uom1 === "pcs" && uom2 === "kg") return Number(((numericQty * 1000) / weightGram).toFixed(6));
+  }
+
+  return numericQty;
+};
+
+const fromBaseQtyRelease = (item, baseQty, targetUnit) => {
+  const numericBase = Number(baseQty || 0);
+  if (numericBase <= 0) return 0;
+
+  const uom1 = normalizeUnit(item.uom_1);
+  const uom2 = normalizeUnit(item.uom_2);
+  const targetNorm = normalizeUnit(targetUnit || item.unit || item.uom_1);
+
+  if (!targetNorm || !uom1 || targetNorm === uom1) return numericBase;
+
+  const weightGram = Number(item.weight || 0);
+  if (targetNorm === uom2 && weightGram > 0) {
+    if (uom1 === "kg" && uom2 === "pcs") return Number(((numericBase * 1000) / weightGram).toFixed(3));
+    if (uom1 === "pcs" && uom2 === "kg") return Number(((numericBase * weightGram) / 1000).toFixed(3));
+  }
+
+  return numericBase;
+};
+
+const releaseUnitOptions = (item) => {
+  return [...new Set([item.uom_1, item.uom_2].filter(Boolean))].map((unit) => ({
+    value: unit,
+    label: unit,
+  }));
+};
+
+const releaseLotOptions = (item, selectedUnit = item.selected_unit || item.unit || item.uom_1) => {
+  return (item.lot_options || []).map((option) => {
+    const qtyInUnit = fromBaseQtyRelease(item, option.stock_quantity || 0, selectedUnit);
+    return {
+      value: option.value,
+      label: `${option.value} (${formatReleaseStock(qtyInUnit, 3)} ${selectedUnit || ""})`,
+      stock_quantity: Number(option.stock_quantity || 0),
+    };
+  });
+};
+
+const getSelectedLotStockBase = (item) => {
+  const lot = (item.lot_options || []).find((opt) => String(opt.value) === String(item.lot_number || ""));
+  return Number(lot?.stock_quantity || 0);
+};
+
+const getRemainingStockInSelectedUnit = (item) => {
+  const stockBase = getSelectedLotStockBase(item);
+  const releaseBase = toBaseQtyRelease(item, item.quantity_release, item.selected_unit || item.unit || item.uom_1);
+  const remainingBase = Math.max(0, stockBase - releaseBase);
+  return fromBaseQtyRelease(item, remainingBase, item.selected_unit || item.unit || item.uom_1);
+};
+
+const syncReleaseItemDisplay = (item) => {
+  const selectedUnit = item.selected_unit || item.unit || item.uom_1;
+  const remainingStock = getRemainingStockInSelectedUnit(item);
+
+  item.quantity_po_display = formatQuantityTrimmed(item.quantity, 2);
+  item.remaining_stock_display = formatReleaseStock(remainingStock, 3);
+  item.remaining_stock_value = Number(remainingStock || 0);
+  item.lot_options_display = releaseLotOptions(item, selectedUnit);
+};
+
+const updateReleaseQuantity = (item, value) => {
+  item.quantity_release = value;
+  syncReleaseItemDisplay(item);
+};
+
+const updateReleaseUnit = (item, value) => {
+  item.selected_unit = value;
+  syncReleaseItemDisplay(item);
+};
+
+const updateReleaseLot = (item, value) => {
+  item.lot_number = value;
+  syncReleaseItemDisplay(item);
+};
+
 const isPending = (row) => row?.status === "pending";
 
 const effectiveRetailerId = computed(() => (isAgronomist.value ? null : filter.retailer_id));
@@ -263,6 +382,8 @@ const buildParams = (sourcePagination) => ({
     fiscal_year: filter.fiscal_year,
     month: filter.month,
     bs_only: isBsInbox ? 1 : null,
+    // Ketika bukan bs_inbox dan user adalah agronomist/admin, exclude BS sales
+    exclude_bs_sales: !isBsInbox && canFilterByBs.value ? 1 : null,
   },
 });
 
@@ -277,6 +398,7 @@ const fetchItems = async (props = null) => {
     rows.value = response.data.data || [];
     totalSalesSum.value = Number(response.data.total_sales_sum || 0);
     totalQtySum.value = Number(response.data.total_qty_sum || 0);
+    pendingPoCount.value = Number(response.data.pending_po_count || 0);
     byDistributor.value = response.data.by_distributor || [];
     byRetailer.value = response.data.by_retailer || [];
 
@@ -333,6 +455,38 @@ const openDistributorDetail = async (row) => {
     });
   } finally {
     distributorDetailLoading.value = false;
+  }
+};
+
+const openPendingPoDialog = async () => {
+  pendingPoDialog.value = true;
+  pendingPoLoading.value = true;
+  pendingPoRows.value = [];
+
+  try {
+    const response = await axios.get(route("admin.sale.pending-po"), {
+      params: {
+        filter: {
+          search: filter.search,
+          distributor_id: isBS.value ? null : filter.distributor_id,
+          retailer_id: effectiveRetailerId.value,
+          bs_user_id: canFilterByBs.value ? filter.bs_user_id : null,
+          fiscal_year: filter.fiscal_year,
+          month: filter.month,
+          bs_only: isBsInbox ? 1 : null,
+          exclude_bs_sales: !isBsInbox && canFilterByBs.value ? 1 : null,
+        },
+      },
+    });
+
+    pendingPoRows.value = response.data?.rows || [];
+  } catch (error) {
+    Notify.create({
+      message: error?.response?.data?.message || "Gagal memuat detail Pending PO",
+      color: "negative",
+    });
+  } finally {
+    pendingPoLoading.value = false;
   }
 };
 
@@ -403,14 +557,23 @@ const openReleaseDialog = async (row) => {
     releaseSale.value = data;
     releaseItems.value = (data.items || []).map((item) => ({
       id: item.id,
+      product_id: item.product_id,
       product_name: item.product_name,
       quantity: item.quantity,
       quantity_release: item.quantity,
       unit: item.unit,
+      selected_unit: item.unit || item.uom_1 || null,
+      uom_1: item.uom_1,
+      uom_2: item.uom_2,
+      weight: Number(item.weight || 0),
       remaining_stock: null,
-      lot_number: item.lot_number || "",
+      lot_options: Array.isArray(item.lot_options) ? item.lot_options : [],
+      lot_number: item.lot_number || item.lot_options?.[0]?.value || "",
       expired_date: item.expired_date || null,
-    }));
+    })).map((item) => {
+      syncReleaseItemDisplay(item);
+      return item;
+    });
     releaseDialog.value = true;
   } catch (error) {
     Notify.create({
@@ -440,6 +603,33 @@ const submitRelease = async () => {
       });
       return;
     }
+
+    const qtyReleaseBase = toBaseQtyRelease(item, qtyRelease, item.selected_unit || item.unit || item.uom_1);
+    const qtyPoBase = toBaseQtyRelease(item, qtyPo, item.unit || item.uom_1);
+    if (qtyReleaseBase > qtyPoBase) {
+      Notify.create({
+        message: `Qty release ${item.product_name || "item"} melebihi qty PO setelah konversi satuan`,
+        color: "warning",
+      });
+      return;
+    }
+
+    if (!String(item.lot_number || "").trim()) {
+      Notify.create({
+        message: `No. Lot untuk ${item.product_name || "item"} wajib diisi saat release`,
+        color: "warning",
+      });
+      return;
+    }
+
+    const selectedLotBase = getSelectedLotStockBase(item);
+    if (selectedLotBase > 0 && qtyReleaseBase > selectedLotBase) {
+      Notify.create({
+        message: `Qty release ${item.product_name || "item"} melebihi stok lot terpilih`,
+        color: "warning",
+      });
+      return;
+    }
   }
 
   releasing.value = true;
@@ -448,9 +638,8 @@ const submitRelease = async () => {
       items: releaseItems.value.map((item) => ({
         id: item.id,
         quantity: Number(item.quantity_release || 0),
-        remaining_stock: item.remaining_stock === null || item.remaining_stock === ""
-          ? null
-          : Number(item.remaining_stock),
+        unit: item.selected_unit || item.unit,
+        remaining_stock: Number(item.remaining_stock_value || 0),
         lot_number: item.lot_number?.trim() || null,
         expired_date: item.expired_date || null,
       })),
@@ -696,7 +885,7 @@ watch(pagination, () => storage.set("pagination", pagination.value), { deep: tru
           />
 
           <q-select
-            v-if="canFilterByBs"
+            v-if="canFilterByBs && isBsInbox"
             class="custom-select col-12 col-sm-6 col-md-2"
             v-model="filter.bs_user_id"
             :options="bsOptions"
@@ -709,7 +898,7 @@ watch(pagination, () => storage.set("pagination", pagination.value), { deep: tru
           />
 
           <q-select
-            v-if="!isAgronomist"
+            v-if="!isAgronomist && isBsInbox"
             class="custom-select col-12 col-sm-6 col-md-2"
             v-model="filter.retailer_id"
             :options="filteredRetailerOptions"
@@ -764,6 +953,14 @@ watch(pagination, () => storage.set("pagination", pagination.value), { deep: tru
           <div class="stat-body">
             <div class="stat-label">Jumlah Transaksi</div>
             <div class="stat-value">{{ formatNumber(pagination.rowsNumber) }}</div>
+          </div>
+        </div>
+        <div class="stat-card stat-pending pending-po-card" @click="openPendingPoDialog">
+          <q-icon class="stat-icon" name="pending_actions" size="26px" />
+          <div class="stat-body">
+            <div class="stat-label">Pending PO</div>
+            <div class="stat-value">{{ formatNumber(pendingPoCount) }}</div>
+            <div class="text-caption text-grey-6">Klik untuk lihat detail PO belum release</div>
           </div>
         </div>
       </div>
@@ -1139,7 +1336,7 @@ watch(pagination, () => storage.set("pagination", pagination.value), { deep: tru
     </q-dialog>
 
     <q-dialog v-model="releaseDialog" persistent>
-      <q-card :style="isMobileView ? 'width: 96vw; max-width: 96vw' : 'min-width: 640px; max-width: 95vw'">
+      <q-card :style="isMobileView ? 'width: 96vw; max-width: 96vw' : 'min-width: 1080px; max-width: 96vw'">
         <q-card-section class="text-subtitle1 text-bold">
           Release PO #{{ releaseSale?.id || "-" }}
         </q-card-section>
@@ -1160,7 +1357,7 @@ watch(pagination, () => storage.set("pagination", pagination.value), { deep: tru
               <q-card-section class="q-pb-sm">
                 <div class="text-subtitle2 text-weight-bold">{{ item.product_name || '-' }}</div>
                 <div class="text-caption text-grey-7">
-                  Qty PO: {{ formatNumber(item.quantity, 'id-ID', 2) }} {{ item.unit || '-' }}
+                  Qty PO: {{ item.quantity_po_display || formatQuantityTrimmed(item.quantity, 2) }} {{ item.unit || '-' }}
                 </div>
               </q-card-section>
 
@@ -1168,7 +1365,7 @@ watch(pagination, () => storage.set("pagination", pagination.value), { deep: tru
 
               <q-card-section class="q-gutter-sm">
                 <q-input
-                  v-model.number="item.quantity_release"
+                  :model-value="item.quantity_release"
                   type="number"
                   dense
                   outlined
@@ -1176,35 +1373,52 @@ watch(pagination, () => storage.set("pagination", pagination.value), { deep: tru
                   step="0.01"
                   :disable="releasing"
                   label="Qty Release"
+                  @update:model-value="(value) => updateReleaseQuantity(item, value)"
                 >
                   <template #append>
                     <span class="text-caption text-grey-7">{{ item.unit || '-' }}</span>
                   </template>
                 </q-input>
 
-                <q-input
-                  v-model.number="item.remaining_stock"
-                  type="number"
+                <q-select
+                  :model-value="item.selected_unit"
+                  :options="releaseUnitOptions(item)"
+                  map-options
+                  emit-value
                   dense
                   outlined
-                  min="0"
-                  step="0.01"
+                  label="Satuan Release"
                   :disable="releasing"
-                  label="Sisa Stok Tersedia"
-                  placeholder="Opsional"
+                  @update:model-value="(value) => updateReleaseUnit(item, value)"
+                />
+
+                <q-input
+                  :model-value="item.remaining_stock_display || formatQuantityTrimmed(getRemainingStockInSelectedUnit(item), 3)"
+                  dense
+                  outlined
+                  readonly
+                  :disable="releasing"
+                  label="Sisa Stok Tersedia (otomatis)"
                 >
                   <template #append>
-                    <span class="text-caption text-grey-7">{{ item.unit || '-' }}</span>
+                    <span class="text-caption text-grey-7">{{ item.selected_unit || item.unit || '-' }}</span>
                   </template>
                 </q-input>
 
-                <q-input
-                  v-model.trim="item.lot_number"
+                <q-select
+                  :model-value="item.lot_number"
+                  :options="item.lot_options_display || releaseLotOptions(item)"
+                  map-options
+                  emit-value
                   dense
                   outlined
                   label="No. Lot"
-                  placeholder="No. Lot"
                   :disable="releasing"
+                  clearable
+                  use-input
+                  fill-input
+                  hide-selected
+                  @update:model-value="(value) => updateReleaseLot(item, value)"
                 />
 
                 <q-input
@@ -1219,62 +1433,86 @@ watch(pagination, () => storage.set("pagination", pagination.value), { deep: tru
             </q-card>
           </div>
 
-          <q-markup-table v-else flat bordered square separator="cell">
+          <q-markup-table v-else flat bordered square separator="cell" class="release-table">
             <thead>
               <tr>
-                <th class="text-left">Produk</th>
-                <th class="text-right">Qty PO</th>
-                <th class="text-right">Qty Release</th>
-                <th class="text-left">Satuan</th>
-                <th class="text-right">Sisa Stok Tersedia</th>
-                <th class="text-left">No. Lot</th>
-                <th class="text-left">Expired</th>
+                <th class="text-left col-product">Produk</th>
+                <th class="text-right col-qty">Qty PO</th>
+                <th class="text-right col-qty">Qty Release</th>
+                <th class="text-left col-unit">Satuan Release</th>
+                <th class="text-left col-unit">Satuan PO</th>
+                <th class="text-right col-stock">Sisa Stok Tersedia</th>
+                <th class="text-left col-lot">No. Lot</th>
+                <th class="text-left col-expired">Expired</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="item in releaseItems" :key="item.id">
-                <td>{{ item.product_name || '-' }}</td>
-                <td class="text-right">{{ formatNumber(item.quantity, 'id-ID', 2) }}</td>
-                <td>
+                <td class="col-product">{{ item.product_name || '-' }}</td>
+                <td class="text-right col-qty">{{ item.quantity_po_display || formatQuantityTrimmed(item.quantity, 2) }}</td>
+                <td class="col-qty">
                   <q-input
-                    v-model.number="item.quantity_release"
+                    :model-value="item.quantity_release"
                     type="number"
                     dense
                     outlined
                     min="0.01"
                     step="0.01"
                     :disable="releasing"
+                    class="release-input"
+                    @update:model-value="(value) => updateReleaseQuantity(item, value)"
                   />
                 </td>
-                <td>{{ item.unit || '-' }}</td>
-                <td>
-                  <q-input
-                    v-model.number="item.remaining_stock"
-                    type="number"
+                <td class="col-unit">
+                  <q-select
+                    :model-value="item.selected_unit"
+                    :options="releaseUnitOptions(item)"
+                    map-options
+                    emit-value
                     dense
                     outlined
-                    min="0"
-                    step="0.01"
                     :disable="releasing"
-                    placeholder="Opsional"
+                    class="release-input"
+                    @update:model-value="(value) => updateReleaseUnit(item, value)"
                   />
                 </td>
-                <td>
+                <td class="col-unit">{{ item.unit || '-' }}</td>
+                <td class="col-stock">
                   <q-input
-                    v-model.trim="item.lot_number"
+                    :model-value="item.remaining_stock_display || formatQuantityTrimmed(getRemainingStockInSelectedUnit(item), 3)"
                     dense
                     outlined
-                    placeholder="No. Lot"
+                    readonly
                     :disable="releasing"
+                    placeholder="Otomatis"
+                    class="release-input"
                   />
                 </td>
-                <td>
+                <td class="col-lot">
+                  <q-select
+                    :model-value="item.lot_number"
+                    :options="item.lot_options_display || releaseLotOptions(item)"
+                    map-options
+                    emit-value
+                    dense
+                    outlined
+                    :disable="releasing"
+                    class="release-input"
+                    clearable
+                    use-input
+                    fill-input
+                    hide-selected
+                    @update:model-value="(value) => updateReleaseLot(item, value)"
+                  />
+                </td>
+                <td class="col-expired">
                   <q-input
                     v-model="item.expired_date"
                     type="date"
                     dense
                     outlined
                     :disable="releasing"
+                    class="release-input"
                   />
                 </td>
               </tr>
@@ -1382,6 +1620,114 @@ watch(pagination, () => storage.set("pagination", pagination.value), { deep: tru
         </q-card-section>
       </q-card>
     </q-dialog>
+
+    <q-dialog v-model="pendingPoDialog" maximized="false">
+      <q-card style="width: 980px; max-width: 96vw; max-height: 90vh; display: flex; flex-direction: column;">
+        <q-card-section class="row items-center q-pb-none q-pt-sm q-px-md" style="flex-shrink: 0">
+          <div class="text-subtitle2 text-bold">Detail Pending PO</div>
+          <q-space />
+          <q-btn icon="close" flat round dense @click="pendingPoDialog = false" />
+        </q-card-section>
+
+        <q-card-section class="q-pt-xs q-pb-sm q-px-md" style="flex-shrink: 0">
+          <div class="dist-detail-stats">
+            <div class="dist-detail-stat">
+              <span class="dist-detail-stat-label">Total Pending PO</span>
+              <span class="dist-detail-stat-val">{{ formatNumber(pendingPoRows.length) }}</span>
+            </div>
+          </div>
+        </q-card-section>
+
+        <q-separator />
+
+        <q-card-section class="q-pt-sm col overflow-auto">
+          <div v-if="isMobileView">
+            <q-inner-loading :showing="pendingPoLoading" color="grey-6" />
+            <template v-if="!pendingPoLoading">
+              <div
+                v-for="row in pendingPoRows"
+                :key="row.id"
+                class="detail-mobile-card q-mb-sm cursor-pointer"
+                @click="router.get(route('admin.sale.detail', row.id))"
+              >
+                <div class="row items-center justify-between q-mb-xs">
+                  <span class="text-caption text-grey-7">PO #{{ row.id }}</span>
+                  <span class="text-caption text-grey-7">{{ formatDate(row.date) }}</span>
+                </div>
+                <div class="detail-mobile-meta">
+                  <span class="detail-mobile-label">Distributor</span>
+                  <span class="detail-mobile-val">{{ row.distributor?.name || '-' }}</span>
+                </div>
+                <div v-if="!isAgronomist" class="detail-mobile-meta">
+                  <span class="detail-mobile-label">R1/R2</span>
+                  <span class="detail-mobile-val">{{ row.retailer?.name || '-' }}</span>
+                </div>
+                <div class="detail-mobile-meta">
+                  <span class="detail-mobile-label">Input By</span>
+                  <span class="detail-mobile-val">{{ row.created_by_user?.name || '-' }}</span>
+                </div>
+                <q-separator class="q-my-xs" />
+                <div class="row items-center justify-between">
+                  <span class="text-caption text-grey-6">Total</span>
+                  <span class="text-subtitle2 text-bold">Rp {{ formatNumber(row.total_amount || 0) }}</span>
+                </div>
+              </div>
+              <div v-if="pendingPoRows.length === 0" class="text-center text-caption text-grey-5 q-py-md">
+                Tidak ada PO pending pada filter saat ini.
+              </div>
+            </template>
+          </div>
+
+          <q-table
+            v-else
+            dense
+            flat
+            bordered
+            row-key="id"
+            :rows="pendingPoRows"
+            :loading="pendingPoLoading"
+            :columns="[
+              { name: 'id', label: 'PO', field: 'id', align: 'left' },
+              { name: 'date', label: 'Tanggal', field: 'date', align: 'left' },
+              { name: 'distributor', label: 'Distributor', field: (r) => r.distributor?.name || '-', align: 'left' },
+              { name: 'retailer', label: 'R1/R2', field: (r) => r.retailer?.name || '-', align: 'left' },
+              { name: 'items', label: 'Detail Item', field: 'items', align: 'left' },
+              { name: 'created_by', label: 'Input By', field: (r) => r.created_by_user?.name || '-', align: 'left' },
+              { name: 'total', label: 'Total', field: 'total_amount', align: 'right' },
+              { name: 'action', label: '', field: 'action', align: 'right' },
+            ]"
+            :pagination="{ rowsPerPage: 15 }"
+          >
+            <template #body-cell-id="props">
+              <q-td :props="props">#{{ props.row.id }}</q-td>
+            </template>
+            <template #body-cell-date="props">
+              <q-td :props="props">{{ formatDate(props.row.date) }}</q-td>
+            </template>
+            <template #body-cell-items="props">
+              <q-td :props="props" style="max-width: 360px; white-space: normal;">
+                {{ (props.row.items || []).map((item) => `${item.product?.name || '-'} (${formatNumber(item.quantity || 0, 'id-ID', 2)} ${item.unit || '-'})`).join(', ') || '-' }}
+              </q-td>
+            </template>
+            <template #body-cell-total="props">
+              <q-td :props="props" class="text-right">Rp {{ formatNumber(props.row.total_amount || 0) }}</q-td>
+            </template>
+            <template #body-cell-action="props">
+              <q-td :props="props" class="text-right">
+                <q-btn
+                  flat
+                  dense
+                  no-caps
+                  color="primary"
+                  label="Detail"
+                  @click="router.get(route('admin.sale.detail', props.row.id))"
+                />
+              </q-td>
+            </template>
+          </q-table>
+        </q-card-section>
+      </q-card>
+    </q-dialog>
   </authenticated-layout>
 </template>
 
@@ -1394,6 +1740,33 @@ watch(pagination, () => storage.set("pagination", pagination.value), { deep: tru
 .release-mobile-card {
   border-radius: 12px;
   box-shadow: 0 4px 14px rgba(16, 24, 40, 0.06);
+}
+
+.release-table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.release-table th,
+.release-table td {
+  white-space: normal;
+  vertical-align: top;
+}
+
+.release-table .col-product { width: 24%; }
+.release-table .col-qty { width: 12%; }
+.release-table .col-unit { width: 8%; }
+.release-table .col-stock { width: 16%; }
+.release-table .col-lot { width: 20%; }
+.release-table .col-expired { width: 20%; }
+
+.release-table :deep(.release-input .q-field__control) {
+  min-height: 40px;
+}
+
+.release-table :deep(.release-input .q-field__native),
+.release-table :deep(.release-input .q-field__input) {
+  font-size: 13px;
 }
 </style>
 
@@ -1425,7 +1798,7 @@ watch(pagination, () => storage.set("pagination", pagination.value), { deep: tru
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -1453,6 +1826,16 @@ watch(pagination, () => storage.set("pagination", pagination.value), { deep: tru
   font-weight: 700;
   color: #1e293b;
   line-height: 1.2;
+}
+
+.pending-po-card {
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.pending-po-card:hover {
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
 }
 
 .summary-shell {

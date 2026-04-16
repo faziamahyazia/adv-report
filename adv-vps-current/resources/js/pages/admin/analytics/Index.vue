@@ -1,6 +1,6 @@
 <script setup>
 import { reactive, ref, computed, onMounted, watch } from "vue";
-import { usePage } from "@inertiajs/vue3";
+import { router, usePage } from "@inertiajs/vue3";
 import { useQuasar } from "quasar";
 import ECharts from "vue-echarts";
 import axios from "axios";
@@ -13,6 +13,9 @@ const loading = ref(true);  // Start with true to show spinner initially
 const showFilter = ref(true);
 const compareChartType = ref("line");
 const showCompareTable = ref(true);
+const pendingPoDialog = ref(false);
+const pendingPoLoading = ref(false);
+const pendingPoRows = ref([]);
 
 const defaultFiscalYear = page.props.default_fiscal_year ?? current_year();
 const nowMonth          = current_month();
@@ -24,13 +27,13 @@ const filter = reactive({
   compare_fy_a:   defaultFiscalYear,
   compare_fy_b:   defaultFiscalYear - 1,
   month:          0,       // 0 = all months
-  sale_type:      "",      // "" = all
+  sale_type:      "distributor",
   distributor_id: "",
 });
 
 const fiscalYears = Array.from({ length: 5 }, (_, i) => {
   const y = defaultFiscalYear - 2 + i;
-  return { value: y, label: `${y} / ${y + 1}` };
+  return { value: y, label: `FY ${y}/${y + 1}` };
 });
 
 const monthOptions = [
@@ -39,8 +42,6 @@ const monthOptions = [
 ];
 
 const saleTypeOptions = [
-  { value: "",            label: "Semua Tipe"   },
-  { value: "retailer",    label: "Retailer"     },
   { value: "distributor", label: "Distributor"  },
 ];
 
@@ -50,7 +51,24 @@ const distributors = computed(() => [
 ]);
 
 // ── Data ──────────────────────────────────────────────────────────────────
-const summary       = ref({ total_sales: 0, total_transactions: 0, avg_per_transaction: 0 });
+const summary       = ref({ total_sales: 0, total_transactions: 0, avg_per_transaction: 0, pending_po_count: 0 });
+const marketOverview = ref({
+  market_size_qty: 0,
+  market_size_value: 0,
+  actual_sales_value: 0,
+  actual_sales_qty: 0,
+  market_gap_value: 0,
+  market_share_percent: null,
+  market_source: "sales_actual",
+});
+const marketShareMonthly = ref([]);
+const marketShareByProduct = ref([]);
+const marketProductMeta = ref({
+  is_estimated: false,
+  scale_factor: 1,
+  base_market_total: 0,
+  target_market_total: 0,
+});
 const monthly       = ref([]);
 const byProduct     = ref([]);
 const fyCompare     = ref({
@@ -92,6 +110,10 @@ async function fetchData() {
     const res = await axios.get(route("admin.analytics.sales-chart"), { params });
     if (res.data && res.data.summary) {
       summary.value       = res.data.summary || {};
+      marketOverview.value = res.data.market_overview || marketOverview.value;
+      marketShareMonthly.value = res.data.market_share_monthly || [];
+      marketShareByProduct.value = res.data.market_share_by_product || [];
+      marketProductMeta.value = res.data.market_product_meta || marketProductMeta.value;
       monthly.value       = res.data.monthly || [];
       byProduct.value     = res.data.by_product || [];
       byDistributor.value = res.data.by_distributor || [];
@@ -102,7 +124,24 @@ async function fetchData() {
     console.error("Analytics Error:", e);
     $q.notify({ type: "negative", message: "Gagal memuat data analitik: " + (e.message || "Unknown error") });
     // Set empty state
-    summary.value = { total_sales: 0, total_transactions: 0, avg_per_transaction: 0 };
+    summary.value = { total_sales: 0, total_transactions: 0, avg_per_transaction: 0, pending_po_count: 0 };
+    marketOverview.value = {
+      market_size_qty: 0,
+      market_size_value: 0,
+      actual_sales_value: 0,
+      actual_sales_qty: 0,
+      market_gap_value: 0,
+      market_share_percent: null,
+      market_source: "sales_actual",
+    };
+    marketShareMonthly.value = [];
+    marketShareByProduct.value = [];
+    marketProductMeta.value = {
+      is_estimated: false,
+      scale_factor: 1,
+      base_market_total: 0,
+      target_market_total: 0,
+    };
     monthly.value = [];
     byProduct.value = [];
     byDistributor.value = [];
@@ -154,7 +193,7 @@ const monthlyOption = computed(() => ({
     },
   },
   yAxis:   [
-    { type: "value", name: "Rp", axisLabel: { fontSize: 9, formatter: v => v >= 1e6 ? (v/1e6).toFixed(0)+"Jt" : v >= 1e3 ? (v/1e3).toFixed(0)+"K" : v } },
+    { type: "value", name: "Rp", axisLabel: { fontSize: 9, formatter: v => formatNumber(v, "id-ID", 0) } },
     { type: "value", name: "Trx", axisLabel: { fontSize: 9 }, splitLine: { show: false } },
   ],
   series:  [
@@ -173,7 +212,10 @@ const monthlyOption = computed(() => ({
 
 // ── By Product (Pie) ──────────────────────────────────────────────────────
 const byProductOption = computed(() => ({
-  tooltip: { trigger: "item", formatter: "{b}: Rp{c} ({d}%)" },
+  tooltip: {
+    trigger: "item",
+    formatter: (params) => `${params.name}: Rp ${formatNumber(params.value, "id-ID", 0)} (${formatNumber(params.percent, "id-ID", 0)}%)`,
+  },
   legend:  { orient: "vertical", right: 0, top: "center", textStyle: { fontSize: 10 } },
   series:  [{
     type: "pie", radius: ["40%", "70%"],
@@ -195,7 +237,7 @@ const byDistributorOption = computed(() => ({
     const p = params[0];
     return `<b>${p.name}</b><br>Rp ${formatNumber(p.value, "id-ID", 0)}`;
   }},
-  xAxis: { type: "value", axisLabel: { fontSize: 9, formatter: v => v >= 1e6 ? (v/1e6).toFixed(0)+"Jt" : v } },
+  xAxis: { type: "value", axisLabel: { fontSize: 9, formatter: v => formatNumber(v, "id-ID", 0) } },
   yAxis: {
     type: "category",
     data: byDistributor.value.map(d => d.name.length > 18 ? d.name.substring(0, 16) + "…" : d.name).reverse(),
@@ -205,7 +247,7 @@ const byDistributorOption = computed(() => ({
     type: "bar", barMaxWidth: 18,
     data: byDistributor.value.map(d => d.total).reverse(),
     itemStyle: { color: "#43A047" },
-    label: { show: true, position: "right", fontSize: 9, formatter: v => v.value >= 1e6 ? "Rp"+(v.value/1e6).toFixed(1)+"Jt" : "" },
+    label: { show: true, position: "right", fontSize: 9, formatter: v => `Rp ${formatNumber(v.value, "id-ID", 0)}` },
   }],
 }));
 
@@ -216,7 +258,7 @@ const byRegionOption = computed(() => ({
     const p = params[0];
     return `<b>${p.name}</b><br>Rp ${formatNumber(p.value, "id-ID", 0)}`;
   }},
-  xAxis: { type: "value", axisLabel: { fontSize: 9, formatter: v => v >= 1e6 ? (v/1e6).toFixed(0)+"Jt" : v } },
+  xAxis: { type: "value", axisLabel: { fontSize: 9, formatter: v => formatNumber(v, "id-ID", 0) } },
   yAxis: {
     type: "category",
     data: byRegion.value.map(r => r.name).reverse(),
@@ -226,14 +268,153 @@ const byRegionOption = computed(() => ({
     type: "bar", barMaxWidth: 18,
     data: byRegion.value.map(r => r.total).reverse(),
     itemStyle: { color: "#8E24AA" },
-    label: { show: true, position: "right", fontSize: 9, formatter: v => v.value >= 1e6 ? "Rp"+(v.value/1e6).toFixed(1)+"Jt" : "" },
+    label: { show: true, position: "right", fontSize: 9, formatter: v => `Rp ${formatNumber(v.value, "id-ID", 0)}` },
   }],
+}));
+
+const marketShareLabel = computed(() => {
+  const value = marketOverview.value?.market_share_percent;
+  if (value === null || value === undefined) return "-";
+  return `${formatNumber(value, "id-ID", 2)}%`;
+});
+
+const marketCoverageLabel = computed(() => {
+  const marketSize = Number(marketOverview.value?.market_size_value || 0);
+  const actual = Number(marketOverview.value?.actual_sales_value || 0);
+  if (marketSize <= 0) return "-";
+  return `${formatNumber((actual / marketSize) * 100, "id-ID", 2)}%`;
+});
+
+const marketSourceMeta = computed(() => {
+  return marketOverview.value?.market_source === "market_insight"
+    ? "Sumber: input Market Insight BS"
+    : "Sumber: agregasi penjualan aktual";
+});
+
+const marketProductSourceMeta = computed(() => {
+  return marketOverview.value?.market_source === "market_insight"
+    ? "Market size per produk diproporsikan dari distribusi penjualan aktual"
+    : "Market size per produk dari agregasi penjualan aktual";
+});
+
+const marketProductScaleLabel = computed(() => {
+  if (!marketProductMeta.value?.is_estimated) return "";
+  const factor = Number(marketProductMeta.value?.scale_factor || 1);
+  return `Skala ${formatNumber(factor, "id-ID", 4)}x`;
+});
+
+const marketProductBaseTotalLabel = computed(() => {
+  return rupiah(Number(marketProductMeta.value?.base_market_total || 0));
+});
+
+const marketProductTargetTotalLabel = computed(() => {
+  return rupiah(Number(marketProductMeta.value?.target_market_total || 0));
+});
+
+const marketShareMonthlyOption = computed(() => ({
+  grid: isMobile.value
+    ? { left: 12, right: 8, top: 32, bottom: 40, containLabel: true }
+    : { left: 56, right: 24, top: 20, bottom: 40, containLabel: true },
+  tooltip: {
+    trigger: "axis",
+    formatter(params) {
+      const label = params[0]?.axisValue ?? "";
+      const row = marketShareMonthly.value.find((item) => item.label === label) || {};
+      const shareText = row.share_percent === null || row.share_percent === undefined
+        ? "-"
+        : `${formatNumber(row.share_percent, "id-ID", 2)}%`;
+      return [
+        `<div style=\"font-size:12px;font-weight:700;margin-bottom:4px\">${label}</div>`,
+        `<div style=\"font-size:12px\">Market Share: <b>${shareText}</b></div>`,
+        `<div style=\"font-size:12px\">Actual: <b>Rp ${formatNumber(row.actual_value || 0, "id-ID", 0)}</b></div>`,
+        `<div style=\"font-size:12px\">Market Size: <b>Rp ${formatNumber(row.market_size_value || 0, "id-ID", 0)}</b></div>`,
+      ].join("");
+    },
+  },
+  xAxis: {
+    type: "category",
+    data: marketShareMonthly.value.map((item) => item.label),
+    axisLabel: {
+      fontSize: isMobile.value ? 9 : 10,
+      rotate: isMobile.value ? 35 : 0,
+      interval: 0,
+    },
+  },
+  yAxis: {
+    type: "value",
+    axisLabel: { fontSize: 9, formatter: (v) => `${formatNumber(v, "id-ID", 0)}%` },
+    splitLine: { lineStyle: { type: "dashed", color: "#e4ece9" } },
+  },
+  series: [{
+    name: "Market Share",
+    type: "line",
+    smooth: true,
+    symbol: "circle",
+    symbolSize: 6,
+    data: marketShareMonthly.value.map((item) => item.share_percent),
+    lineStyle: { width: 3, color: "#0ea5a4" },
+    itemStyle: { color: "#0ea5a4" },
+    areaStyle: { color: "rgba(14, 165, 164, 0.16)" },
+    connectNulls: false,
+  }],
+}));
+
+const marketShareByProductOption = computed(() => ({
+  grid: { left: 16, right: 16, top: 40, bottom: 12, containLabel: true },
+  tooltip: {
+    trigger: "axis",
+    axisPointer: { type: "shadow" },
+    formatter(params) {
+      const name = params[0]?.axisValue ?? "";
+      const item = marketShareByProduct.value.find((row) => row.name === name) || {};
+      const shareText = item.share_percent === null || item.share_percent === undefined
+        ? "-"
+        : `${formatNumber(item.share_percent, "id-ID", 2)}%`;
+      return [
+        `<div style=\"font-size:12px;font-weight:700;margin-bottom:4px\">${name}</div>`,
+        `<div style=\"font-size:12px\">Actual: <b>Rp ${formatNumber(item.actual_value || 0, "id-ID", 0)}</b></div>`,
+        `<div style=\"font-size:12px\">Market Size: <b>Rp ${formatNumber(item.market_size_value || 0, "id-ID", 0)}</b></div>`,
+        `<div style=\"font-size:12px\">Share: <b>${shareText}</b></div>`,
+      ].join("");
+    },
+  },
+  legend: {
+    top: 0,
+    data: ["Actual", "Market Size"],
+    textStyle: { fontSize: isMobile.value ? 10 : 11 },
+  },
+  xAxis: {
+    type: "value",
+    axisLabel: { fontSize: 9, formatter: (v) => formatNumber(v, "id-ID", 0) },
+  },
+  yAxis: {
+    type: "category",
+    data: marketShareByProduct.value.map((row) => row.name).reverse(),
+    axisLabel: {
+      fontSize: 10,
+      formatter: (v) => (String(v).length > 20 ? `${String(v).slice(0, 18)}…` : v),
+    },
+  },
+  series: [
+    {
+      name: "Actual",
+      type: "bar",
+      barMaxWidth: 14,
+      data: marketShareByProduct.value.map((row) => row.actual_value).reverse(),
+      itemStyle: { color: "#1976D2" },
+    },
+    {
+      name: "Market Size",
+      type: "bar",
+      barMaxWidth: 14,
+      data: marketShareByProduct.value.map((row) => row.market_size_value).reverse(),
+      itemStyle: { color: "#94a3b8" },
+    },
+  ],
 }));
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 function rupiah(val) {
-  if (val >= 1e9)  return "Rp " + formatNumber(val / 1e9, "id-ID", 1) + " M";
-  if (val >= 1e6)  return "Rp " + formatNumber(val / 1e6, "id-ID", 1) + " Jt";
   return "Rp " + formatNumber(val, "id-ID", 0);
 }
 
@@ -246,7 +427,6 @@ const periodLabel = computed(() => {
 const activeFilterCount = computed(() => {
   let count = 1; // fiscal year is always active
   if (filter.month) count += 1;
-  if (filter.sale_type) count += 1;
   if (filter.distributor_id) count += 1;
   return count;
 });
@@ -398,7 +578,7 @@ const fyCompareOption = computed(() => {
       type: "value",
       axisLabel: {
         fontSize: 9,
-        formatter: v => v >= 1e6 ? (v / 1e6).toFixed(0) + "Jt" : v >= 1e3 ? (v / 1e3).toFixed(0) + "K" : v,
+        formatter: v => formatNumber(v, "id-ID", 0),
       },
       splitLine: { lineStyle: { type: "dashed", color: "#e4ece9" } },
     },
@@ -497,9 +677,7 @@ const compareDistributorName = computed(() => {
 });
 
 const compareTypeLabel = computed(() => {
-  if (filter.sale_type === "distributor") return "Distributor";
-  if (filter.sale_type === "retailer") return "Retailer";
-  return "Semua Tipe";
+  return "Distributor";
 });
 
 const compareFyCaption = computed(() => {
@@ -589,6 +767,35 @@ const exportFyCompareCsv = () => {
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 };
+
+const openPendingPoDialog = async () => {
+  pendingPoDialog.value = true;
+  pendingPoLoading.value = true;
+  pendingPoRows.value = [];
+
+  try {
+    const params = {
+      fiscal_year: filter.fiscal_year,
+    };
+
+    if (filter.month) {
+      params.month = filter.month;
+    }
+    if (filter.distributor_id) {
+      params.distributor_id = filter.distributor_id;
+    }
+
+    const response = await axios.get(route("admin.analytics.pending-po"), { params });
+    pendingPoRows.value = response.data?.rows || [];
+  } catch (error) {
+    $q.notify({
+      type: "negative",
+      message: error?.response?.data?.message || "Gagal memuat detail Pending PO",
+    });
+  } finally {
+    pendingPoLoading.value = false;
+  }
+};
 </script>
 
 <template>
@@ -652,6 +859,7 @@ const exportFyCompareCsv = () => {
               :options="saleTypeOptions"
               label="Tipe"
               dense emit-value map-options outlined
+              disable
             />
           </div>
           <div class="filter-grid-item">
@@ -713,6 +921,113 @@ const exportFyCompareCsv = () => {
             <div class="kpi-label">Rata-rata per Transaksi</div>
             <div class="kpi-value">{{ rupiah(summary.avg_per_transaction) }}</div>
             <div class="kpi-meta">Indikator nilai order</div>
+          </q-card-section>
+        </q-card>
+
+        <q-card flat bordered class="kpi-card kpi-neutral pending-po-kpi" @click="openPendingPoDialog">
+          <q-card-section class="kpi-section">
+            <div class="kpi-label">Pending PO</div>
+            <div class="kpi-value">{{ formatNumber(summary.pending_po_count, 'id-ID', 0) }}</div>
+            <div class="kpi-meta">Klik untuk lihat daftar PO belum release</div>
+          </q-card-section>
+        </q-card>
+      </div>
+
+      <div class="kpi-grid q-mb-md">
+        <q-card flat bordered class="kpi-card kpi-market-size">
+          <q-card-section class="kpi-section">
+            <div class="kpi-label">Market Size</div>
+            <div class="kpi-value">{{ rupiah(marketOverview.market_size_value || 0) }}</div>
+            <div class="kpi-meta">{{ marketSourceMeta }}</div>
+          </q-card-section>
+        </q-card>
+
+        <q-card flat bordered class="kpi-card kpi-market-share">
+          <q-card-section class="kpi-section">
+            <div class="kpi-label">Market Share</div>
+            <div class="kpi-value">{{ marketShareLabel }}</div>
+            <div class="kpi-meta">Penjualan aktual dibanding market size sumber aktif</div>
+          </q-card-section>
+        </q-card>
+
+        <q-card flat bordered class="kpi-card kpi-market-gap">
+          <q-card-section class="kpi-section">
+            <div class="kpi-label">Gap Market</div>
+            <div class="kpi-value">{{ rupiah(marketOverview.market_gap_value || 0) }}</div>
+            <div class="kpi-meta">Selisih market size vs penjualan aktual</div>
+          </q-card-section>
+        </q-card>
+
+        <q-card flat bordered class="kpi-card kpi-market-coverage">
+          <q-card-section class="kpi-section">
+            <div class="kpi-label">Coverage</div>
+            <div class="kpi-value">{{ marketCoverageLabel }}</div>
+            <div class="kpi-meta">Cakupan penjualan terhadap market size sumber aktif</div>
+          </q-card-section>
+        </q-card>
+      </div>
+
+      <div class="split-grid q-mb-md">
+        <q-card flat bordered class="chart-shell">
+          <q-card-section class="chart-shell-head">
+            <div class="chart-shell-title">Tren Market Share Bulanan</div>
+            <div class="chart-shell-subtitle">Rasio nilai aktual terhadap market size per bulan</div>
+          </q-card-section>
+          <q-card-section class="chart-shell-body">
+            <div v-if="marketShareMonthly.length === 0" class="empty-hint">Belum ada data market share bulanan.</div>
+            <ECharts
+              v-else
+              :option="marketShareMonthlyOption"
+              autoresize
+              :style="{ width: '100%', height: isMobile ? '250px' : '280px', display: 'block' }"
+            />
+          </q-card-section>
+        </q-card>
+
+        <q-card flat bordered class="chart-shell">
+          <q-card-section class="chart-shell-head">
+            <div class="row items-center q-gutter-sm">
+              <div class="chart-shell-title">Market Share per Produk</div>
+              <q-chip
+                v-if="marketProductMeta.is_estimated"
+                dense
+                color="amber-2"
+                text-color="brown-9"
+                icon="calculate"
+              >
+                Estimasi proporsional • {{ marketProductScaleLabel }}
+              </q-chip>
+            </div>
+            <div class="chart-shell-subtitle">{{ marketProductSourceMeta }}</div>
+          </q-card-section>
+          <q-card-section class="chart-shell-body">
+            <div v-if="marketShareByProduct.length === 0" class="empty-hint">Belum ada data market share produk.</div>
+            <ECharts
+              v-else
+              :option="marketShareByProductOption"
+              autoresize
+              :style="{ width: '100%', height: Math.max(240, marketShareByProduct.length * 30) + 'px', display: 'block' }"
+            />
+            <div v-if="marketProductMeta.is_estimated" class="market-audit-panel q-mt-sm">
+              <div class="market-audit-title">Audit Perhitungan Estimasi</div>
+              <div class="market-audit-grid">
+                <div class="market-audit-item">
+                  <div class="market-audit-label">Base Market Total</div>
+                  <div class="market-audit-value">{{ marketProductBaseTotalLabel }}</div>
+                  <div class="market-audit-meta">Total market per produk sebelum scaling</div>
+                </div>
+                <div class="market-audit-item">
+                  <div class="market-audit-label">Target Market Total</div>
+                  <div class="market-audit-value">{{ marketProductTargetTotalLabel }}</div>
+                  <div class="market-audit-meta">Total market dari Market Insight</div>
+                </div>
+                <div class="market-audit-item">
+                  <div class="market-audit-label">Scale Factor</div>
+                  <div class="market-audit-value">{{ marketProductScaleLabel }}</div>
+                  <div class="market-audit-meta">Pengali proporsional seluruh produk</div>
+                </div>
+              </div>
+            </div>
           </q-card-section>
         </q-card>
       </div>
@@ -785,15 +1100,15 @@ const exportFyCompareCsv = () => {
                   </q-tooltip>
                 </q-icon>
               </div>
-              <div class="compare-kpi-value-growth" :class="(fyCompare.value?.total_growth_percent || 0) >= 0 ? 'growth-up' : 'growth-down'">
-                <span class="growth-icon">{{ (fyCompare.value?.total_growth_percent || 0) >= 0 ? '📈' : '📉' }}</span>
+              <div class="compare-kpi-value-growth" :class="(fyCompare.total_growth_percent || 0) >= 0 ? 'growth-up' : 'growth-down'">
+                <span class="growth-icon">{{ (fyCompare.total_growth_percent || 0) >= 0 ? '▲' : '▼' }}</span>
                 <span class="growth-text">{{ fyGrowthLabel }}</span>
               </div>
             </div>
             <div class="compare-kpi-item compare-kpi-avg">
               <div class="compare-kpi-label">Growth Rata-rata Bulanan</div>
-              <div class="compare-kpi-value-growth" :class="(fyCompare.value?.avg_growth_percent || 0) >= 0 ? 'growth-up' : 'growth-down'">
-                <span class="growth-icon">{{ (fyCompare.value?.avg_growth_percent || 0) >= 0 ? '📈' : '📉' }}</span>
+              <div class="compare-kpi-value-growth" :class="(fyCompare.avg_growth_percent || 0) >= 0 ? 'growth-up' : 'growth-down'">
+                <span class="growth-icon">{{ (fyCompare.avg_growth_percent || 0) >= 0 ? '▲' : '▼' }}</span>
                 <span class="growth-text">{{ fyAvgGrowthLabel }}</span>
               </div>
             </div>
@@ -922,6 +1237,76 @@ const exportFyCompareCsv = () => {
           />
         </q-card-section>
       </q-card>
+
+      <q-dialog v-model="pendingPoDialog" maximized="false">
+        <q-card style="width: 980px; max-width: 96vw; max-height: 90vh; display: flex; flex-direction: column;">
+          <q-card-section class="row items-center q-pb-none q-pt-sm q-px-md" style="flex-shrink: 0">
+            <div class="text-subtitle2 text-bold">Detail Pending PO</div>
+            <q-space />
+            <q-btn icon="close" flat round dense @click="pendingPoDialog = false" />
+          </q-card-section>
+
+          <q-card-section class="q-pt-xs q-pb-sm q-px-md" style="flex-shrink: 0">
+            <div class="dist-detail-stats">
+              <div class="dist-detail-stat">
+                <span class="dist-detail-stat-label">Total Pending PO</span>
+                <span class="dist-detail-stat-val">{{ formatNumber(pendingPoRows.length, 'id-ID', 0) }}</span>
+              </div>
+            </div>
+          </q-card-section>
+
+          <q-separator />
+
+          <q-card-section class="q-pt-sm col overflow-auto">
+            <q-table
+              dense
+              flat
+              bordered
+              row-key="id"
+              :rows="pendingPoRows"
+              :loading="pendingPoLoading"
+              :columns="[
+                { name: 'id', label: 'PO', field: 'id', align: 'left' },
+                { name: 'date', label: 'Tanggal', field: 'date', align: 'left' },
+                { name: 'distributor', label: 'Distributor', field: (r) => r.distributor?.name || '-', align: 'left' },
+                { name: 'retailer', label: 'R1/R2', field: (r) => r.retailer?.name || '-', align: 'left' },
+                { name: 'items', label: 'Detail Item', field: 'items', align: 'left' },
+                { name: 'created_by', label: 'Input By', field: (r) => r.created_by_user?.name || '-', align: 'left' },
+                { name: 'total', label: 'Total', field: 'total_amount', align: 'right' },
+                { name: 'action', label: '', field: 'action', align: 'right' },
+              ]"
+              :pagination="{ rowsPerPage: 15 }"
+            >
+              <template #body-cell-id="props">
+                <q-td :props="props">#{{ props.row.id }}</q-td>
+              </template>
+              <template #body-cell-date="props">
+                <q-td :props="props">{{ props.row.date }}</q-td>
+              </template>
+              <template #body-cell-items="props">
+                <q-td :props="props" style="max-width: 360px; white-space: normal;">
+                  {{ (props.row.items || []).map((item) => `${item.product?.name || '-'} (${formatNumber(item.quantity || 0, 'id-ID', 2)} ${item.unit || '-'})`).join(', ') || '-' }}
+                </q-td>
+              </template>
+              <template #body-cell-total="props">
+                <q-td :props="props" class="text-right">Rp {{ formatNumber(props.row.total_amount || 0) }}</q-td>
+              </template>
+              <template #body-cell-action="props">
+                <q-td :props="props" class="text-right">
+                  <q-btn
+                    flat
+                    dense
+                    no-caps
+                    color="primary"
+                    label="Detail"
+                    @click="router.get(route('admin.sale.detail', props.row.id))"
+                  />
+                </q-td>
+              </template>
+            </q-table>
+          </q-card-section>
+        </q-card>
+      </q-dialog>
     </div>
   </authenticated-layout>
 </template>
@@ -965,6 +1350,16 @@ const exportFyCompareCsv = () => {
   min-height: 40px;
 }
 
+.pending-po-kpi {
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.pending-po-kpi:hover {
+  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
+}
+
 .hero-panel {
   width: 100%;
   border-radius: 16px;
@@ -1002,7 +1397,7 @@ const exportFyCompareCsv = () => {
 
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
   gap: 12px;
 }
 
@@ -1053,6 +1448,60 @@ const exportFyCompareCsv = () => {
   background: linear-gradient(140deg, #fff5e8 0%, #fffdf8 100%);
   border-color: #f2ddbe;
   color: #8b4d07;
+}
+
+.kpi-neutral {
+  background: linear-gradient(140deg, #eef2f7 0%, #f8fafc 100%);
+  border-color: #d6e0ea;
+  color: #334155;
+}
+
+.kpi-market-size {
+  background: linear-gradient(140deg, #eef7ff 0%, #f9fcff 100%);
+  border-color: #cadff3;
+  color: #0f4c81;
+}
+
+.kpi-market-share {
+  background: linear-gradient(140deg, #e9fdf8 0%, #f7fffd 100%);
+  border-color: #c6efe2;
+  color: #0f6c57;
+}
+
+.kpi-market-gap {
+  background: linear-gradient(140deg, #fff3f0 0%, #fffaf8 100%);
+  border-color: #f1d4cc;
+  color: #8a3d2c;
+}
+
+.kpi-market-coverage {
+  background: linear-gradient(140deg, #f6f5ff 0%, #fcfbff 100%);
+  border-color: #ddd9fb;
+  color: #4c3f93;
+}
+
+.dist-detail-stats {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.dist-detail-stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.dist-detail-stat-label {
+  font-size: 10px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dist-detail-stat-val {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e293b;
 }
 
 .chart-shell {
@@ -1113,7 +1562,7 @@ const exportFyCompareCsv = () => {
 
 .split-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -1367,6 +1816,53 @@ const exportFyCompareCsv = () => {
   padding: 24px 10px;
 }
 
+.market-audit-panel {
+  border: 1px solid #f7d9a4;
+  background: linear-gradient(140deg, #fff8ea 0%, #fffbf2 100%);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.market-audit-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #7a4b00;
+  margin-bottom: 8px;
+}
+
+.market-audit-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.market-audit-item {
+  border: 1px solid #f4e3bc;
+  border-radius: 8px;
+  background: #fffdf8;
+  padding: 8px;
+}
+
+.market-audit-label {
+  font-size: 10px;
+  color: #9a7400;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.market-audit-value {
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 800;
+  color: #5f3f00;
+}
+
+.market-audit-meta {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #9f7c2f;
+}
+
 @media (max-width: 1024px) {
   .filter-grid {
     grid-template-columns: repeat(3, minmax(150px, 1fr));
@@ -1382,6 +1878,10 @@ const exportFyCompareCsv = () => {
 
   .compare-kpi-grid {
     grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
+
+  .market-audit-grid {
+    grid-template-columns: 1fr;
   }
 }
 

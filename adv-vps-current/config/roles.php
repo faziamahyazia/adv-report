@@ -28,6 +28,7 @@ return [
         'admin.demo-plot.index',
         'admin.demo-plot.data',
         'admin.demo-plot.detail',
+        'admin.demo-plot.cover-photo',
         'admin.demo-plot.add',
         'admin.demo-plot.edit',
         'admin.demo-plot.save',
@@ -78,6 +79,7 @@ return [
         'admin.inventory-log.add',
         'admin.inventory-log.edit',
         'admin.inventory-log.save',
+        'admin.inventory-log.update-stock',
 
         'admin.complaint.index',
         'admin.complaint.data',
@@ -112,6 +114,12 @@ return [
         // Stok Distributor (read-only)
         'admin.distributor-stock.index',
         'admin.distributor-stock.data',
+
+        // Market Insight (input oleh BS)
+        'admin.market-insight.index',
+        'admin.market-insight.data',
+        'admin.market-insight.save',
+        'admin.market-insight.delete',
     ],
     User::Role_Agronomist => [
         'admin.user.index',
@@ -143,6 +151,7 @@ return [
         'admin.demo-plot.index',
         'admin.demo-plot.data',
         'admin.demo-plot.detail',
+        'admin.demo-plot.cover-photo',
         'admin.demo-plot.export',
 
         'admin.demo-plot-visit.index',
@@ -261,6 +270,10 @@ return [
         // Analitik
         'admin.analytics.index',
         'admin.analytics.sales-chart',
+
+        // Market Insight (read-only untuk Agronomist)
+        'admin.market-insight.index',
+        'admin.market-insight.data',
     ], User::Role_ASM => [
         'admin.user.index',
         'admin.user.data',

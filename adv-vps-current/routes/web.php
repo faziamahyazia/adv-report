@@ -19,6 +19,7 @@ use App\Http\Controllers\Admin\DistributorStockController;
 use App\Http\Controllers\Admin\DistributorTargetController;
 use App\Http\Controllers\Admin\HarvestResultController;
 use App\Http\Controllers\Admin\InventoryLogController;
+use App\Http\Controllers\Admin\MarketInsightController;
 use App\Http\Controllers\Admin\NotificationController;
 use App\Http\Controllers\Admin\ProductCategoryController;
 use App\Http\Controllers\Admin\ProductController;
@@ -211,6 +212,7 @@ Route::middleware([Auth::class])->group(function () {
                 Route::get('add', [DemoPlotController::class, 'editor'])->name('admin.demo-plot.add');
                 Route::get('edit/{id}', [DemoPlotController::class, 'editor'])->name('admin.demo-plot.edit');
                 Route::post('save', [DemoPlotController::class, 'save'])->name('admin.demo-plot.save');
+                Route::post('{id}/cover-photo', [DemoPlotController::class, 'updateCoverPhoto'])->name('admin.demo-plot.cover-photo');
                 Route::post('delete/{id}', [DemoPlotController::class, 'delete'])->name('admin.demo-plot.delete');
             });
 
@@ -228,10 +230,12 @@ Route::middleware([Auth::class])->group(function () {
             Route::prefix('inventory-logs')->group(function () {
                 Route::get('', [InventoryLogController::class, 'index'])->name('admin.inventory-log.index');
                 Route::get('data', [InventoryLogController::class, 'data'])->name('admin.inventory-log.data');
+                Route::get('customers-by-user', [InventoryLogController::class, 'customersByUser'])->name('admin.inventory-log.customers-by-user');
                 Route::get('add', [InventoryLogController::class, 'editor'])->name('admin.inventory-log.add');
                 // Route::get('duplicate/{id}', [InventoryLogController::class, 'duplicate'])->name('admin.inventory-log.duplicate');
                 Route::get('edit/{id}', [InventoryLogController::class, 'editor'])->name('admin.inventory-log.edit');
                 Route::post('save', [InventoryLogController::class, 'save'])->name('admin.inventory-log.save');
+                Route::post('update-stock/{id}', [InventoryLogController::class, 'updateStock'])->name('admin.inventory-log.update-stock');
                 Route::post('delete/{id}', [InventoryLogController::class, 'delete'])->name('admin.inventory-log.delete');
                 Route::post('delete-all', [InventoryLogController::class, 'deleteAll'])->name('admin.inventory-log.delete-all');
                 Route::get('detail/{id}', [InventoryLogController::class, 'detail'])->name('admin.inventory-log.detail');
@@ -264,6 +268,7 @@ Route::middleware([Auth::class])->group(function () {
             Route::prefix('sales')->group(function () {
                 Route::get('', [SaleController::class, 'index'])->name('admin.sale.index');
                 Route::get('data', [SaleController::class, 'data'])->name('admin.sale.data');
+                Route::get('pending-po', [SaleController::class, 'pendingPo'])->name('admin.sale.pending-po');
                 Route::get('distributor-stocks', [SaleController::class, 'distributorStocks'])->name('admin.sale.distributor-stocks');
                 Route::get('distributor-detail', [SaleController::class, 'distributorDetail'])->name('admin.sale.distributor-detail');
                 Route::get('add', [SaleController::class, 'add'])->name('admin.sale.add');
@@ -291,7 +296,8 @@ Route::middleware([Auth::class])->group(function () {
                 Route::get('data', [DistributorStockController::class, 'data'])->name('admin.distributor-stock.data');
                 Route::get('add', [DistributorStockController::class, 'add'])->name('admin.distributor-stock.add');
                 Route::post('save', [DistributorStockController::class, 'save'])->name('admin.distributor-stock.save');
-                Route::post('adjust', [DistributorStockController::class, 'adjust'])->name('admin.distributor-stock.adjust');
+                    Route::post('update-meta', [DistributorStockController::class, 'updateMeta'])->name('admin.distributor-stock.update-meta');
+                    Route::post('adjust', [DistributorStockController::class, 'adjust'])->name('admin.distributor-stock.adjust');
                 Route::post('delete', [DistributorStockController::class, 'delete'])->name('admin.distributor-stock.delete');
                 Route::get('{id}/movements', [DistributorStockController::class, 'movements'])->name('admin.distributor-stock.movements');
                 Route::get('{id}/movements/data', [DistributorStockController::class, 'movementsData'])->name('admin.distributor-stock.movements.data');
@@ -301,6 +307,8 @@ Route::middleware([Auth::class])->group(function () {
             Route::prefix('distributor-targets')->group(function () {
                 Route::get('', [DistributorTargetController::class, 'index'])->name('admin.distributor-target.index');
                 Route::get('data', [DistributorTargetController::class, 'data'])->name('admin.distributor-target.data');
+                Route::get('breakdown/{id}', [DistributorTargetController::class, 'breakdown'])->name('admin.distributor-target.breakdown');
+                Route::get('ai-breakdown', [DistributorTargetController::class, 'aiBreakdown'])->name('admin.distributor-target.ai-breakdown');
                 Route::get('export', [DistributorTargetController::class, 'export'])->name('admin.distributor-target.export');
                 Route::get('add', [DistributorTargetController::class, 'editor'])->name('admin.distributor-target.add');
                 Route::get('edit/{id}', [DistributorTargetController::class, 'editor'])->name('admin.distributor-target.edit');
@@ -313,6 +321,15 @@ Route::middleware([Auth::class])->group(function () {
             Route::prefix('analytics')->group(function () {
                 Route::get('', [AnalyticsController::class, 'index'])->name('admin.analytics.index');
                 Route::get('sales-chart', [AnalyticsController::class, 'salesChart'])->name('admin.analytics.sales-chart');
+                Route::get('pending-po', [AnalyticsController::class, 'pendingPo'])->name('admin.analytics.pending-po');
+            });
+
+            // ── Market Insight (input BS per wilayah) ────────────────
+            Route::prefix('market-insights')->group(function () {
+                Route::get('', [MarketInsightController::class, 'index'])->name('admin.market-insight.index');
+                Route::get('data', [MarketInsightController::class, 'data'])->name('admin.market-insight.data');
+                Route::post('save', [MarketInsightController::class, 'save'])->name('admin.market-insight.save');
+                Route::post('delete/{id}', [MarketInsightController::class, 'delete'])->name('admin.market-insight.delete');
             });
         });
 

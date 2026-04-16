@@ -23,9 +23,11 @@ class InventoryLog extends Model
         'area',
         'lot_package',
         'quantity',
+        'movement_quantity',
         'notes',
         'base_quantity',
         'reference_sale_id',
+        'retailer_type',
     ];
 
     protected $casts = [
@@ -34,6 +36,7 @@ class InventoryLog extends Model
         'user_id' => 'integer',
         'reference_sale_id' => 'integer',
         'quantity' => 'float',
+        'movement_quantity' => 'float',
         'base_quantity' => 'integer',
         'check_date' => 'date',
     ];
@@ -60,6 +63,11 @@ class InventoryLog extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function sale()
+    {
+        return $this->belongsTo(Sale::class, 'reference_sale_id');
     }
 
     /**

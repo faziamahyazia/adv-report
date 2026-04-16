@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Activity;
+use App\Models\ActivityPlan;
 use App\Models\Complaint;
 use App\Models\Sale;
 use App\Models\Setting;
@@ -162,6 +163,62 @@ class FonteWhatsAppService
         ]);
 
         return $this->sendMessage($agronomistPhone, $message);
+    }
+
+    public function sendActivityApprovedToBs(User $bsUser, Activity $activity, User $approvedBy): bool
+    {
+        $bsPhone = $this->resolveUserPhone($bsUser);
+        if (!$bsPhone) {
+            Log::warning('WA Fonte: nomor BS tidak valid untuk notifikasi approval kegiatan.', [
+                'user_id' => $bsUser->id,
+                'username' => $bsUser->username,
+            ]);
+            return false;
+        }
+
+        $activity->loadMissing(['type:id,name', 'product:id,name']);
+
+        $lines = [
+            '✅ Realisasi Kegiatan Disetujui',
+            'Halo ' . ($bsUser->name ?? 'BS') . ',',
+            'Realisasi kegiatan Anda telah disetujui.',
+            'Tanggal: ' . optional($activity->date)->format('d-m-Y'),
+            'Jenis: ' . ($activity->type?->name ?? '-'),
+            'Varietas: ' . ($activity->product?->name ?? '-'),
+            'Lokasi: ' . ($activity->location ?: '-'),
+            'Disetujui oleh: ' . ($approvedBy->name ?? '-'),
+            'ID Aktivitas: #' . $activity->id,
+        ];
+
+        return $this->sendMessage($bsPhone, implode("\n", $lines));
+    }
+
+    public function sendActivityPlanApprovedToBs(User $bsUser, ActivityPlan $plan, User $approvedBy): bool
+    {
+        $bsPhone = $this->resolveUserPhone($bsUser);
+        if (!$bsPhone) {
+            Log::warning('WA Fonte: nomor BS tidak valid untuk notifikasi approval plan kegiatan.', [
+                'user_id' => $bsUser->id,
+                'username' => $bsUser->username,
+            ]);
+            return false;
+        }
+
+        $plan->loadMissing(['details.type:id,name', 'details.product:id,name']);
+
+        $detailCount = $plan->details?->count() ?? 0;
+        $monthLabel = Carbon::parse($plan->date)->translatedFormat('F Y');
+
+        $lines = [
+            '✅ Plan Kegiatan Disetujui',
+            'Halo ' . ($bsUser->name ?? 'BS') . ',',
+            'Plan kegiatan Anda untuk ' . $monthLabel . ' telah disetujui.',
+            'Jumlah detail: ' . $detailCount,
+            'Disetujui oleh: ' . ($approvedBy->name ?? '-'),
+            'ID Plan: #' . $plan->id,
+        ];
+
+        return $this->sendMessage($bsPhone, implode("\n", $lines));
     }
 
     public function sendSaleInputNotificationToAgronomist(User $agronomistUser, User $bsUser, Sale $sale): bool

@@ -24,6 +24,42 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ReportController extends Controller
 {
+    private function formatExportQty(float $value): string
+    {
+        // Format desimal dengan koma tanpa pemisah ribuan.
+        // Hanya hilangkan akhiran ",000" agar nilai seperti 3,080 tetap utuh.
+        $formatted = number_format((float) $value, 3, ',', '');
+
+        if (str_ends_with($formatted, ',000')) {
+            return substr($formatted, 0, -4);
+        }
+
+        return $formatted;
+    }
+
+    private function resolveInventoryQty(InventoryLog $item, string $qtyUnit): float
+    {
+        $unit = strtolower(trim((string) $qtyUnit));
+        $weightGram = (float) ($item->product->weight ?? 0);
+
+        $qtyKg = (float) ($item->quantity ?? 0);
+        $qtyPcs = (float) ($item->base_quantity ?? 0);
+
+        if ($unit === 'pcs') {
+            if ($qtyPcs <= 0 && $weightGram > 0 && $qtyKg > 0) {
+                $qtyPcs = ($qtyKg * 1000) / $weightGram;
+            }
+
+            return round($qtyPcs, 3);
+        }
+
+        if ($qtyKg <= 0 && $weightGram > 0 && $qtyPcs > 0) {
+            $qtyKg = ($qtyPcs * $weightGram) / 1000;
+        }
+
+        return round($qtyKg, 3);
+    }
+
     public function index(Request $request)
     {
         $type = $request->get('report_type');
@@ -244,6 +280,10 @@ class ReportController extends Controller
     {
         $userId = $request->get('user_id');
         $productId = $request->get('product_id');
+        $qtyUnit = strtolower((string) $request->get('qty_unit', 'kg'));
+        if (!in_array($qtyUnit, ['kg', 'pcs'], true)) {
+            $qtyUnit = 'kg';
+        }
         $currentUser = Auth::user();
 
         // 1. Buat subquery untuk mendapatkan tanggal pemeriksaan (check_date) terbaru untuk setiap grup
@@ -295,6 +335,11 @@ class ReportController extends Controller
             ->orderBy('t1.product_id')
             ->get();
 
+        foreach ($items as $item) {
+            $item->export_qty_value = $this->resolveInventoryQty($item, $qtyUnit);
+            $item->export_qty_text = $this->formatExportQty((float) $item->export_qty_value);
+        }
+
         [$title, $user, $product] = $this->resolveTitle('Laporan Inventori Aktual', $userId, $productId);
         $format = $request->get('format', 'pdf');
 
@@ -304,6 +349,7 @@ class ReportController extends Controller
                 'title',
                 'user',
                 'product',
+                'qtyUnit',
             ));
         } else if ($format === 'excel') {
             $spreadsheet = new Spreadsheet();
@@ -317,7 +363,7 @@ class ReportController extends Controller
             $sheet->setCellValue('E1', 'Hybrid');
             $sheet->setCellValue('F1', 'Check Date');
             $sheet->setCellValue('G1', 'Lot Package');
-            $sheet->setCellValue('H1', 'Qty');
+            $sheet->setCellValue('H1', 'Qty (' . strtoupper($qtyUnit) . ')');
 
             // Tambahkan data ke Excel
             $row = 2;
@@ -329,7 +375,7 @@ class ReportController extends Controller
                 $sheet->setCellValue('E' . $row, $item->product->name);
                 $sheet->setCellValue('F' . $row, format_date($item->check_date));
                 $sheet->setCellValue('G' . $row, $item->lot_package);
-                $sheet->setCellValue('H' . $row, $item->quantity);
+                $sheet->setCellValue('H' . $row, $item->export_qty_text);
                 $row++;
             }
 
@@ -479,8 +525,10 @@ class ReportController extends Controller
             now()->month >= 4 ? now()->year : (now()->year - 1)
         );
 
+        $format = strtolower((string) $request->get('format', 'pdf'));
+
         return redirect()->route('admin.distributor-target.export', [
-            'format' => 'pdf',
+            'format' => in_array($format, ['pdf', 'excel'], true) ? $format : 'pdf',
             'fiscal_year' => $fiscalYear,
         ]);
     }

@@ -1,5 +1,4 @@
 <script setup>
-import BsTargetCard from "./cards/BsTargetCard.vue";
 import AgronomistDashboardCard from "./cards/AgronomistDashboardCard.vue";
 import { router, usePage } from "@inertiajs/vue3";
 import { useQuasar } from "quasar";
@@ -76,7 +75,7 @@ const onFilterChange = () => {
         <div class="filter-wrap">
 
           <!-- Tabs: view type — agronomist / asm / admin -->
-          <div v-if="['agronomist','asm','admin'].includes(userRole)" class="filter-tabs">
+          <div v-if="['bs','agronomist','asm','admin'].includes(userRole)" class="filter-tabs">
             <q-btn-toggle
               v-model="filter.view_type"
               :options="viewTypeOptions"
@@ -106,9 +105,9 @@ const onFilterChange = () => {
               @update:model-value="onFilterChange"
             />
 
-            <!-- Bulan — BS selalu tampil, agronomist/asm/admin hanya mode 'month' -->
+            <!-- Bulan — tampil hanya pada mode bulanan -->
             <q-select
-              v-if="userRole === 'bs' || (['agronomist','asm','admin'].includes(userRole) && filter.view_type === 'month')"
+              v-if="['bs','agronomist','asm','admin'].includes(userRole) && filter.view_type === 'month'"
               class="filter-sel"
               v-model="filter.month"
               :options="months"
@@ -138,23 +137,7 @@ const onFilterChange = () => {
       </q-toolbar>
     </template>
 
-    <!-- BS Dashboard -->
-    <div class="dash-wrap" v-if="userRole === 'bs'">
-      <BsTargetCard />
-    </div>
-
-    <!-- Agronomist Dashboard -->
-    <div class="dash-wrap" v-if="userRole === 'agronomist'">
-      <AgronomistDashboardCard />
-    </div>
-
-    <!-- Admin Dashboard -->
-    <div class="dash-wrap" v-if="userRole === 'admin'">
-      <AgronomistDashboardCard />
-    </div>
-
-    <!-- ASM Dashboard -->
-    <div class="dash-wrap" v-if="userRole === 'asm'">
+    <div class="dash-wrap" v-if="['bs','agronomist','asm','admin'].includes(userRole)">
       <AgronomistDashboardCard />
     </div>
   </authenticated-layout>

@@ -86,11 +86,26 @@ DB_NAME=nama_database DB_USER=root ./manage-vps.sh db-audit
 
 # Eksekusi cleanup
 ./manage-vps.sh cleanup --apply
+
+# Preview cleanup item tidak terpakai (apt/journal/tmp/backup)
+./manage-vps.sh prune-unused
+
+# Eksekusi cleanup item tidak terpakai
+./manage-vps.sh prune-unused --apply
+
+# Jika frontend memang tidak pernah build di VPS, boleh sekalian hapus node_modules
+REMOVE_NODE_MODULES=1 ./manage-vps.sh prune-unused --apply
 ```
 
 Catatan:
 - Default script aman karena `cleanup` berjalan dalam mode preview jika tanpa `--apply`.
-- Ubah parameter lewat environment variable seperti `LOG_RETENTION_DAYS`, `BACKUP_RETENTION_DAYS`, dan `BACKUP_PATH`.
+- Default script aman karena `cleanup` dan `prune-unused` berjalan dalam mode preview jika tanpa `--apply`.
+- Ubah parameter lewat environment variable seperti `LOG_RETENTION_DAYS`, `BACKUP_RETENTION_DAYS`, `BACKUP_PATH`, `TMP_RETENTION_DAYS`, `JOURNAL_RETENTION_DAYS`, dan `BACKUP_PREFIXES`.
+- Untuk backup di `/var/backups/adv`, contoh:
+
+```bash
+BACKUP_PATH=/var/backups/adv BACKUP_PREFIXES=backup_,reminder-ui-,complaint-bs-fix- ./manage-vps.sh prune-unused
+```
 
 ### Mode Web App (lebih gampang)
 

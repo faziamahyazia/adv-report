@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Activity;
 use App\Models\ActivityPlan;
 use App\Models\ActivityTarget;
+use App\Models\District;
 use App\Models\DemoPlot;
 use App\Models\DemoPlotVisit;
 use App\Models\User;
@@ -73,6 +74,8 @@ class UserController extends Controller
         $user->created_at = null;
         return inertia('admin/user/Editor', [
             'data' => $user,
+            'district_ids' => [],
+            'districts' => District::query()->orderBy('name')->get(['id', 'name', 'province_id']),
             'users' => User::where('role', '<>', User::Role_Admin)
                 ->where('role', '<>', User::Role_BS)->orderBy('name')->get()
         ]);
@@ -91,6 +94,8 @@ class UserController extends Controller
 
         return inertia('admin/user/Editor', [
             'data' => $user,
+            'district_ids' => $id ? $user->districts()->pluck('districts.id')->values() : [],
+            'districts' => District::query()->orderBy('name')->get(['id', 'name', 'province_id']),
             'users' => User::where('role', '<>', User::Role_Admin)
                 ->where('role', '<>', User::Role_BS)->orderBy('name')->get()
         ]);
@@ -105,6 +110,8 @@ class UserController extends Controller
             'parent_id' => 'nullable|exists:users,id',
             'whatsapp_number' => 'nullable|string|max:30|regex:/^\+?[0-9]{9,16}$/',
             'work_area' => 'nullable|string|max:100',
+            'bs_district_ids' => 'nullable|array',
+            'bs_district_ids.*' => 'integer|exists:districts,id',
         ];
 
         $user = null;
@@ -131,8 +138,21 @@ class UserController extends Controller
         if (!empty($password)) {
             $user->password = Hash::make($password);
         }
+
+        if ($request->get('role') === User::Role_BS && empty($request->get('bs_district_ids', []))) {
+            return back()->withErrors([
+                'bs_district_ids' => 'Kabupaten untuk BS wajib dipilih minimal satu.',
+            ])->withInput();
+        }
+
         $user->fill($request->only($fields));
         $user->save();
+
+        if ($user->role === User::Role_BS) {
+            $user->districts()->sync($request->get('bs_district_ids', []));
+        } else {
+            $user->districts()->sync([]);
+        }
 
         $message = "Pengguna {$user->username} telah " . ($request->id ? 'diperbarui' : 'ditambahkan') . '.';
 

@@ -9,6 +9,7 @@ import LocaleNumberInput from "@/components/LocaleNumberInput.vue";
 
 const page = usePage();
 const title = (!!page.props.data.id ? "Edit" : "Tambah") + " Demo Plot";
+
 // const plant_statuses = Object.entries(
 //   window.CONSTANTS.DEMO_PLOT_PLANT_STATUSES
 // ).map(([value, label]) => ({
@@ -34,6 +35,12 @@ const existingSeedPerPcs = Number(
     ?.jumlah_biji_per_pcs || 0
 );
 
+const populationCalcModeOptions = [
+  { label: "Isi Germinasi -> Estimasi Populasi", value: "from_germination" },
+  { label: "Isi Estimasi Populasi -> Germinasi", value: "from_population" },
+];
+const populationCalcMode = ref("from_germination");
+
 const form = useForm({
   id: page.props.data.id,
   user_id: page.props.data.user_id ? Number(page.props.data.user_id) : null,
@@ -43,9 +50,9 @@ const form = useForm({
   owner_name: page.props.data.owner_name,
   owner_phone: page.props.data.owner_phone,
   field_location: page.props.data.field_location,
-  jumlah_tanam: page.props.data.jumlah_tanam || null,
-  db_germinasi: page.props.data.db_germinasi || null,
-  population: page.props.data.population,
+  jumlah_tanam: page.props.data.jumlah_tanam ?? null,
+  db_germinasi: page.props.data.db_germinasi ?? null,
+  population: page.props.data.population ?? null,
   plant_date: dayjs(page.props.data.plant_date).format("YYYY-MM-DD"),
   // plant_status: page.props.data.plant_status,
   notes: page.props.data.notes,
@@ -54,6 +61,7 @@ const form = useForm({
   image_path: page.props.data.image_path,
   image: null,
 });
+
 
 const selectedProduct = computed(() => {
   return products.find((item) => Number(item.value) === Number(form.product_id || 0));
@@ -66,8 +74,8 @@ const seedsPerPcs = computed(() => Number(selectedProduct.value?.jumlah_biji_per
 const totalSeeds = computed(() => {
   const tanamRaw = form.jumlah_tanam;
   // Handle both number and string (from LocaleNumberInput)
-  const tanam = typeof tanamRaw === 'string' 
-    ? Number(tanamRaw.replace(/\D/g, '')) 
+  const tanam = typeof tanamRaw === 'string'
+    ? Number(tanamRaw.replace(/\D/g, ''))
     : Number(tanamRaw || 0);
     
   if (tanam <= 0 || seedsPerPcs.value <= 0) {
@@ -85,21 +93,68 @@ const estimatedPopulationFromGermination = computed(() => {
   return Math.round(seeds * (germinasi / 100));
 });
 
-// Watch for jumlah_tanam and db_germinasi changes
+const estimatedGerminationFromPopulation = computed(() => {
+  const seeds = totalSeeds.value;
+  const population = Number(form.population || 0);
+
+  if (seeds <= 0 || population <= 0) {
+    return null;
+  }
+
+  const germinasi = (population / seeds) * 100;
+  return Number(Math.min(100, Math.max(0, germinasi)).toFixed(2));
+});
+
 watch(
-  [() => form.jumlah_tanam, () => form.db_germinasi, () => form.product_id],
-  () => {
-    const tanamRaw = form.jumlah_tanam;
-    const tanam = typeof tanamRaw === 'string' 
-      ? Number(tanamRaw.replace(/\D/g, '')) 
-      : Number(tanamRaw || 0);
-    const germinasi = Number(form.db_germinasi || 0);
-    
-    if (tanam > 0 && germinasi > 0 && seedsPerPcs.value > 0) {
+  () => populationCalcMode.value,
+  (mode) => {
+    if (mode === "from_population") {
+      if ((!form.population || Number(form.population) <= 0) && estimatedPopulationFromGermination.value > 0) {
+        form.population = estimatedPopulationFromGermination.value;
+      }
+      return;
+    }
+
+    if (estimatedPopulationFromGermination.value > 0) {
       form.population = estimatedPopulationFromGermination.value;
     }
+  }
+);
+
+// Auto-calculate by selected mode
+watch(
+  [
+    () => form.jumlah_tanam,
+    () => form.db_germinasi,
+    () => form.product_id,
+    () => form.population,
+    () => populationCalcMode.value,
+  ],
+  ([newTanam, newGerminasi, _newProductId, newPopulation, mode]) => {
+    const tanamRaw = newTanam;
+    const tanam = typeof tanamRaw === 'string'
+      ? Number(tanamRaw.replace(/\D/g, ''))
+      : Number(tanamRaw || 0);
+    const germinasi = Number(newGerminasi || 0);
+    const population = Number(newPopulation || 0);
+
+    if (mode === "from_population") {
+      if (tanam > 0 && population > 0 && seedsPerPcs.value > 0 && estimatedGerminationFromPopulation.value !== null) {
+        form.db_germinasi = estimatedGerminationFromPopulation.value;
+      } else if (tanam === 0 || population === 0) {
+        form.db_germinasi = null;
+      }
+      return;
+    }
+
+    // Mode default: isi germinasi -> estimasi populasi
+    if (tanam > 0 && germinasi > 0 && seedsPerPcs.value > 0) {
+      form.population = estimatedPopulationFromGermination.value;
+    } else if (tanam === 0 || germinasi === 0) {
+      form.population = null;
+    }
   },
-  { immediate: true } // Trigger on mount
+  { immediate: true, deep: true }
 );
 
 const submit = () =>
@@ -285,7 +340,7 @@ function removeLocation() {
                 step="0.01"
                 min="0"
                 max="100"
-                :disable="form.processing"
+                :disable="form.processing || populationCalcMode === 'from_population'"
                 :error="!!form.errors.db_germinasi"
                 :error-message="form.errors.db_germinasi"
                 :rules="[
@@ -294,6 +349,16 @@ function removeLocation() {
                 ]"
                 hint="Persentase germinasi (0-100%)"
                 hide-bottom-space
+              />
+
+              <q-option-group
+                v-model="populationCalcMode"
+                :options="populationCalcModeOptions"
+                type="radio"
+                inline
+                dense
+                label="Mode Perhitungan"
+                class="q-mt-sm"
               />
               
               <q-banner
@@ -314,15 +379,26 @@ function removeLocation() {
                 </div>
               </q-banner>
               
+              <!-- Population Field - Auto-filled but editable if needed -->
               <q-input
-                class="q-mt-sm"
-                outlined
-                dense
-                disable
-                :model-value="estimatedPopulationFromGermination > 0 ? estimatedPopulationFromGermination : '-'"
+                v-model.number="form.population"
+                type="number"
                 label="Estimasi Populasi (pohon)"
-                hint="Otomatis terisi berdasarkan perhitungan di atas"
-              />
+                filled
+                bg-color="green-1"
+                :disable="form.processing || populationCalcMode !== 'from_population'"
+                :error="!!form.errors.population"
+                :error-message="form.errors.population"
+                :hint="populationCalcMode === 'from_population'
+                  ? 'Isi estimasi populasi, DB Germinasi akan dihitung otomatis'
+                  : '✓ Otomatis terisi berdasarkan: Jumlah Tanam × Biji/PCS × Germinasi%'"
+                hide-bottom-space
+              >
+                <template v-slot:prepend>
+                  <q-icon name="calculate" color="green" />
+                </template>
+              </q-input>
+              
               <q-input
                 v-model.trim="form.notes"
                 type="textarea"

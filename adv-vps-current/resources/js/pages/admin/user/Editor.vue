@@ -20,9 +20,17 @@ const form = useForm({
   parent_id: page.props.data.parent_id
     ? Number(page.props.data.parent_id)
     : null,
+  bs_district_ids: page.props.district_ids ?? [],
   work_area: page.props.data.work_area ? page.props.data.work_area : null,
   active: !!page.props.data.active,
 });
+
+const districtOptions = computed(() =>
+  (page.props.districts ?? []).map((item) => ({
+    value: item.id,
+    label: item.name,
+  }))
+);
 
 const users = ref([
   {
@@ -152,6 +160,20 @@ const submit = () => handleSubmit({ form, url: route("admin.user.save") });
                 :disable="form.processing"
                 :error="!!form.errors.work_area"
                 :error-message="form.errors.work_area"
+                hide-bottom-space
+              />
+              <q-select
+                v-if="form.role === $CONSTANTS.USER_ROLE_BS"
+                v-model="form.bs_district_ids"
+                label="Kabupaten yang dipegang"
+                :options="districtOptions"
+                map-options
+                emit-value
+                multiple
+                use-chips
+                :disable="form.processing"
+                :error="!!form.errors.bs_district_ids"
+                :error-message="form.errors.bs_district_ids"
                 hide-bottom-space
               />
               <div style="margin-left: -10px">

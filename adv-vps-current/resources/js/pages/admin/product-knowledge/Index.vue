@@ -6,6 +6,7 @@ import axios from "axios";
 import { useQuasar } from "quasar";
 import dayjs from "dayjs";
 import ECharts from "vue-echarts";
+import { formatNumber as formatLocaleNumber } from "@/helpers/utils";
 
 const page = usePage();
 const categories = page.props.categories ?? [];
@@ -41,15 +42,31 @@ const altitudeZoneOptions = [
   { value: "highland", label: "Highland (>700 mdpl)" },
 ];
 
+const harvestStatusOptions = [
+  { value: "all", label: "Semua Status Panen" },
+  { value: "completed", label: "Panen Selesai" },
+  { value: "pending", label: "Belum Selesai" },
+];
+
 const harvestFilter = reactive({
   search: "",
   product_id: "all",
   altitude_zone: "all",
 });
+const harvestStatusFilter = ref("all");
 
 const harvestItems = ref([]);
 const harvestLoading = ref(false);
 const harvestViewMode = ref("card");
+const harvestPagination = reactive({
+  page: 1,
+  rowsPerPage: 12,
+});
+const harvestRowsPerPageOptions = [
+  { label: "12 / halaman", value: 12 },
+  { label: "24 / halaman", value: 24 },
+  { label: "48 / halaman", value: 48 },
+];
 const harvestDetailDialog = ref(false);
 const harvestPhotoViewerDialog = ref(false);
 const selectedHarvestPhotoViewerUrl = ref(null);
@@ -78,6 +95,7 @@ const editForm = reactive({
   total_pieces: null,
   germination_percentage: null,
   is_multiple_harvest: false,
+  is_completed: true,
   harvest_cycles: [
     { label: "K1", date: "", quantity: null },
   ],
@@ -267,10 +285,50 @@ async function fetchHarvests() {
       params: { filter: harvestFilter },
     });
     harvestItems.value = res.data;
+    harvestPagination.page = 1;
   } finally {
     harvestLoading.value = false;
   }
 }
+
+const filteredHarvestItems = computed(() => {
+  const mode = harvestStatusFilter.value;
+  if (mode === "completed") {
+    return harvestItems.value.filter((item) => Boolean(item?.is_completed));
+  }
+  if (mode === "pending") {
+    return harvestItems.value.filter((item) => !Boolean(item?.is_completed));
+  }
+  return harvestItems.value;
+});
+
+const totalHarvestPages = computed(() => {
+  const total = filteredHarvestItems.value.length;
+  return Math.max(1, Math.ceil(total / harvestPagination.rowsPerPage));
+});
+
+const paginatedHarvestItems = computed(() => {
+  const start = (harvestPagination.page - 1) * harvestPagination.rowsPerPage;
+  const end = start + harvestPagination.rowsPerPage;
+  return filteredHarvestItems.value.slice(start, end);
+});
+
+const harvestPageStart = computed(() => {
+  if (!filteredHarvestItems.value.length) {
+    return 0;
+  }
+  return (harvestPagination.page - 1) * harvestPagination.rowsPerPage + 1;
+});
+
+const harvestPageEnd = computed(() => {
+  if (!filteredHarvestItems.value.length) {
+    return 0;
+  }
+  return Math.min(
+    harvestPagination.page * harvestPagination.rowsPerPage,
+    filteredHarvestItems.value.length
+  );
+});
 
 
 
@@ -304,6 +362,17 @@ function formatNumber(value, digits = 1) {
     return "0";
   }
   return number.toFixed(digits);
+}
+
+function formatPerTreeYield(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) {
+    return "0 kg (0 gram)";
+  }
+
+  const kilograms = formatLocaleNumber(number, "id-ID", 2);
+  const grams = Math.round(number * 1000);
+  return `${kilograms} kg (${formatLocaleNumber(grams, "id-ID", 0)} gram)`;
 }
 
 const selectedHarvestMetrics = computed(() => {
@@ -673,7 +742,7 @@ function collectTopPhrases(texts = [], maxItems = 5) {
 }
 
 const harvestAnalysis = computed(() => {
-  const items = harvestItems.value || [];
+  const items = filteredHarvestItems.value || [];
   const zoneStats = {
     lowland: { label: "Lowland", range: "0-400 mdpl", count: 0, totalHarvest: 0 },
     middleland: { label: "Middleland", range: "401-700 mdpl", count: 0, totalHarvest: 0 },
@@ -912,6 +981,7 @@ function resetEditForm(item) {
   editForm.total_pieces = item?.total_pieces ?? null;
   editForm.germination_percentage = item?.germination_percentage ?? null;
   editForm.is_multiple_harvest = Boolean(item?.is_multiple_harvest);
+  editForm.is_completed = Boolean(item?.is_completed ?? !item?.is_multiple_harvest);
   editForm.harvest_cycles = Array.isArray(item?.harvest_cycles) && item.harvest_cycles.length
     ? item.harvest_cycles.map((cycle, index) => ({
       label: cycle?.label || `K${index + 1}`,
@@ -996,7 +1066,6 @@ watch(editSelectedDemoPlot, (plot) => {
 
   editForm.farmer_name = plot.owner_name || "";
   editForm.product_id = plot.product_id || null;
-  editForm.total_pieces = Number(plot.population || 0) || null;
 
   const referenceDate = editForm.harvest_date || dayjs().format("YYYY-MM-DD");
   if (plot.plant_date) {
@@ -1060,6 +1129,7 @@ async function saveHarvestEdit() {
     formData.append("total_pieces", String(editForm.total_pieces ?? ""));
     formData.append("germination_percentage", String(editForm.germination_percentage ?? ""));
     formData.append("is_multiple_harvest", editForm.is_multiple_harvest ? "1" : "0");
+    formData.append("is_completed", editForm.is_completed ? "1" : "0");
 
     formData.append("demo_plot_id", editForm.demo_plot_id ? String(editForm.demo_plot_id) : "");
     formData.append("farmer_name", editForm.farmer_name || "");
@@ -1209,6 +1279,23 @@ watch(harvestFilter, () => {
   harvestDebounceTimer = setTimeout(fetchHarvests, 300);
 });
 
+watch(harvestStatusFilter, () => {
+  harvestPagination.page = 1;
+});
+
+watch(
+  () => harvestPagination.rowsPerPage,
+  () => {
+    harvestPagination.page = 1;
+  }
+);
+
+watch(totalHarvestPages, (maxPage) => {
+  if (harvestPagination.page > maxPage) {
+    harvestPagination.page = maxPage;
+  }
+});
+
 function goGallery(product) {
   router.get(route("admin.product-knowledge.gallery", product.id));
 }
@@ -1301,7 +1388,7 @@ const isBs = page.props.auth?.user?.role === "bs";
 
           <div v-if="activeTab === 'harvest'" class="col-12">
             <div class="row q-col-gutter-sm harvest-filter-grid">
-              <div class="col-12 col-md-5 col-lg-6">
+              <div class="col-12 col-sm-6 col-lg-3">
                 <q-input
                   v-model="harvestFilter.search"
                   dense
@@ -1313,7 +1400,7 @@ const isBs = page.props.auth?.user?.role === "bs";
                   <template #prepend><q-icon name="search" size="18px" /></template>
                 </q-input>
               </div>
-              <div class="col-12 col-md-3 col-lg-3">
+              <div class="col-12 col-sm-6 col-lg-3">
                 <q-select
                   v-model="harvestFilter.product_id"
                   :options="productOptions"
@@ -1326,10 +1413,23 @@ const isBs = page.props.auth?.user?.role === "bs";
                   bg-color="white"
                 />
               </div>
-              <div class="col-12 col-md-4 col-lg-3">
+              <div class="col-12 col-sm-6 col-lg-3">
                 <q-select
                   v-model="harvestFilter.altitude_zone"
                   :options="altitudeZoneOptions"
+                  option-value="value"
+                  option-label="label"
+                  emit-value
+                  map-options
+                  dense
+                  outlined
+                  bg-color="white"
+                />
+              </div>
+              <div class="col-12 col-sm-6 col-lg-3">
+                <q-select
+                  v-model="harvestStatusFilter"
+                  :options="harvestStatusOptions"
                   option-value="value"
                   option-label="label"
                   emit-value
@@ -1409,7 +1509,7 @@ const isBs = page.props.auth?.user?.role === "bs";
         </div>
       </div>
 
-      <div v-else-if="harvestItems.length === 0" class="q-pa-xl text-center text-grey-5">
+      <div v-else-if="filteredHarvestItems.length === 0" class="q-pa-xl text-center text-grey-5">
         <q-icon name="agriculture" size="56px" />
         <div class="text-subtitle2 q-mt-sm text-grey-6">Belum ada data hasil panen.</div>
       </div>
@@ -1427,7 +1527,7 @@ const isBs = page.props.auth?.user?.role === "bs";
               <div class="col-12 col-md-auto">
                 <div class="row items-center q-gutter-sm justify-end">
                   <div class="text-caption text-grey-7">
-                    Total data: <b>{{ harvestItems.length }}</b>
+                    Total data: <b>{{ filteredHarvestItems.length }}</b>
                   </div>
                   <q-btn-toggle
                     v-model="harvestViewMode"
@@ -1449,7 +1549,7 @@ const isBs = page.props.auth?.user?.role === "bs";
 
         <div v-if="harvestViewMode === 'card'" class="harvest-gallery-modern q-mb-md">
           <q-card
-            v-for="item in harvestItems"
+            v-for="item in paginatedHarvestItems"
             :key="`card-${item.id}`"
             flat
             bordered
@@ -1474,6 +1574,9 @@ const isBs = page.props.auth?.user?.role === "bs";
                   {{ item.altitude_mdpl !== null && item.altitude_mdpl !== undefined ? altitudeZone(item.altitude_mdpl) : 'Zona -' }}
                 </span>
                 <span v-if="item.is_multiple_harvest" class="harvest-modern-tag cycle">Multi Panen</span>
+                <span class="harvest-modern-tag" :class="item.is_completed ? 'done' : 'pending'">
+                  {{ item.is_completed ? 'Panen Selesai' : 'Belum Selesai' }}
+                </span>
               </div>
             </div>
 
@@ -1494,7 +1597,7 @@ const isBs = page.props.auth?.user?.role === "bs";
 
               <div class="harvest-modern-chip-row q-mt-sm">
                 <span class="harvest-modern-chip">Per PCS: {{ getPerPieceYield(item) ? `${formatNumber(getPerPieceYield(item))} ${item.harvest_unit || 'kg'}` : '-' }}</span>
-                <span class="harvest-modern-chip">Per Pohon: {{ getPerTreeYield(item) ? `${formatNumber(getPerTreeYield(item))} ${item.harvest_unit || 'kg'}` : '-' }}</span>
+                <span class="harvest-modern-chip">Per Pohon: {{ getPerTreeYield(item) ? formatPerTreeYield(getPerTreeYield(item)) : '-' }}</span>
                 <span class="harvest-modern-chip">Kali Panen: {{ getHarvestCycleCount(item) }}x</span>
               </div>
 
@@ -1506,7 +1609,24 @@ const isBs = page.props.auth?.user?.role === "bs";
               <div class="row q-mt-sm justify-end q-gutter-sm">
                 <q-btn dense flat color="primary" icon="visibility" label="Detail" @click.stop="openHarvestDetail(item)" />
                 <q-btn dense flat color="accent" icon="picture_as_pdf" label="PDF" @click.stop="exportHarvestPdf(item)" />
-                <q-btn v-if="item.can_edit" dense unelevated color="secondary" icon="edit" label="Edit" @click.stop="openHarvestEdit(item)" />
+                <q-btn
+                  v-if="item.can_edit && !item.is_completed"
+                  dense
+                  unelevated
+                  color="primary"
+                  icon="update"
+                  label="Update"
+                  @click.stop="openHarvestEdit(item)"
+                />
+                <q-btn
+                  v-else-if="item.can_edit"
+                  dense
+                  flat
+                  color="secondary"
+                  icon="edit"
+                  label="Edit"
+                  @click.stop="openHarvestEdit(item)"
+                />
               </div>
             </q-card-section>
           </q-card>
@@ -1525,11 +1645,12 @@ const isBs = page.props.auth?.user?.role === "bs";
                     <th class="text-right">Kali Panen</th>
                     <th class="text-left">Zona</th>
                     <th class="text-left">Input</th>
+                    <th class="text-left">Status</th>
                     <th class="text-right">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="item in harvestItems" :key="`table-${item.id}`">
+                  <tr v-for="item in paginatedHarvestItems" :key="`table-${item.id}`">
                     <td>{{ formatDate(item.harvest_date) }}</td>
                     <td>
                       <div class="table-thumb-wrap">
@@ -1559,7 +1680,7 @@ const isBs = page.props.auth?.user?.role === "bs";
                       {{ getPerPieceYield(item) ? `${formatNumber(getPerPieceYield(item))} ${item.harvest_unit || 'kg'}/pcs` : '-' }}
                     </td>
                     <td class="text-right">
-                      {{ getPerTreeYield(item) ? `${formatNumber(getPerTreeYield(item))} ${item.harvest_unit || 'kg'}/pohon` : '-' }}
+                      {{ getPerTreeYield(item) ? formatPerTreeYield(getPerTreeYield(item)) : '-' }}
                     </td>
                     <td class="text-right">{{ getHarvestCycleCount(item) }}x</td>
                     <td>
@@ -1569,15 +1690,70 @@ const isBs = page.props.auth?.user?.role === "bs";
                       <div>{{ item.created_by?.name || '-' }}</div>
                       <div class="text-caption text-grey-7">{{ formatDateTime(item.created_datetime) }}</div>
                     </td>
+                    <td>
+                      <q-badge :color="item.is_completed ? 'positive' : 'warning'" outline>
+                        {{ item.is_completed ? 'Panen Selesai' : 'Belum Selesai' }}
+                      </q-badge>
+                    </td>
                     <td class="text-right">
                       <q-btn dense flat color="primary" icon="visibility" @click="openHarvestDetail(item)" />
                       <q-btn dense flat color="accent" icon="picture_as_pdf" @click="exportHarvestPdf(item)" />
-                      <q-btn v-if="item.can_edit" dense flat color="secondary" icon="edit" @click="openHarvestEdit(item)" />
+                      <q-btn
+                        v-if="item.can_edit && !item.is_completed"
+                        dense
+                        flat
+                        color="primary"
+                        icon="update"
+                        @click="openHarvestEdit(item)"
+                      />
+                      <q-btn
+                        v-else-if="item.can_edit"
+                        dense
+                        flat
+                        color="secondary"
+                        icon="edit"
+                        @click="openHarvestEdit(item)"
+                      />
                     </td>
                   </tr>
                 </tbody>
               </q-markup-table>
         </div>
+
+        <q-card flat bordered class="q-mb-md harvest-pagination-card">
+          <q-card-section class="q-py-sm">
+            <div class="row items-center q-col-gutter-sm">
+              <div class="col-12 col-md">
+                <div class="text-caption text-grey-7">
+                  Menampilkan <b>{{ harvestPageStart }}</b>-<b>{{ harvestPageEnd }}</b> dari <b>{{ filteredHarvestItems.length }}</b> data
+                </div>
+              </div>
+              <div class="col-12 col-md-auto">
+                <div class="row items-center q-gutter-sm justify-end">
+                  <q-select
+                    v-model="harvestPagination.rowsPerPage"
+                    :options="harvestRowsPerPageOptions"
+                    dense
+                    outlined
+                    emit-value
+                    map-options
+                    label="Per Halaman"
+                    style="min-width: 130px"
+                  />
+                  <q-pagination
+                    v-model="harvestPagination.page"
+                    :max="totalHarvestPages"
+                    :max-pages="7"
+                    direction-links
+                    boundary-links
+                    color="primary"
+                    active-color="primary"
+                  />
+                </div>
+              </div>
+            </div>
+          </q-card-section>
+        </q-card>
 
         <q-card flat bordered class="q-mb-md analysis-card">
           <q-card-section>
@@ -1683,7 +1859,7 @@ const isBs = page.props.auth?.user?.role === "bs";
               flat
               dense
               color="primary"
-              :label="editMode ? 'Batal Edit' : 'Edit Data'"
+              :label="editMode ? 'Batal Edit' : (selectedHarvest?.is_completed ? 'Edit Data' : 'Update Data')"
               @click="editMode ? resetEditForm(selectedHarvest) : null; editMode = !editMode"
             />
             <q-btn
@@ -1812,6 +1988,13 @@ const isBs = page.props.auth?.user?.role === "bs";
                       v-model="editForm.is_multiple_harvest"
                       color="primary"
                       label="Beberapa Kali Panen"
+                    />
+                  </div>
+                  <div class="col-12 col-md-3">
+                    <q-toggle
+                      v-model="editForm.is_completed"
+                      color="positive"
+                      :label="editForm.is_completed ? 'Panen Selesai' : 'Belum Selesai'"
                     />
                   </div>
 
@@ -2133,55 +2316,55 @@ const isBs = page.props.auth?.user?.role === "bs";
                   v-if="selectedHarvestMetrics"
                   v-show="!$q.screen.lt.md || detailMobileTab === 'summary'"
                 >
-                  <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+                  <div class="col-12 col-sm-6 col-md-4">
                     <div class="detail-metric-card">
                       <div class="detail-metric-label">Total Panen</div>
                       <div class="detail-metric-value">{{ formatNumber(selectedHarvestMetrics.qty) }} {{ selectedHarvest.harvest_unit || 'kg' }}</div>
                     </div>
                   </div>
-                  <div class="col-12 col-sm-6 col-md-4 col-lg-2" v-if="selectedHarvestMetrics.isFreshCorn">
+                  <div class="col-12 col-sm-6 col-md-4" v-if="selectedHarvestMetrics.isFreshCorn">
                     <div class="detail-metric-card">
                       <div class="detail-metric-label">Hasil Putren</div>
                       <div class="detail-metric-value">{{ selectedHarvestMetrics.putrenQty ? `${formatNumber(selectedHarvestMetrics.putrenQty)} ${selectedHarvest.harvest_unit || 'kg'}` : '-' }}</div>
                     </div>
                   </div>
-                  <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+                  <div class="col-12 col-sm-6 col-md-4">
                     <div class="detail-metric-card">
                       <div class="detail-metric-label">Hasil per PCS</div>
                       <div class="detail-metric-value">{{ selectedHarvestMetrics.perPieceYield ? `${formatNumber(selectedHarvestMetrics.perPieceYield)} ${selectedHarvest.harvest_unit || 'kg'}/pcs` : '-' }}</div>
                     </div>
                   </div>
-                  <div class="col-12 col-sm-6 col-md-4 col-lg-2" v-if="selectedHarvestMetrics.isFreshCorn">
+                  <div class="col-12 col-sm-6 col-md-4" v-if="selectedHarvestMetrics.isFreshCorn">
                     <div class="detail-metric-card">
                       <div class="detail-metric-label">Putren per PCS</div>
                       <div class="detail-metric-value">{{ selectedHarvestMetrics.putrenPerPieceYield ? `${formatNumber(selectedHarvestMetrics.putrenPerPieceYield)} ${selectedHarvest.harvest_unit || 'kg'}/pcs` : '-' }}</div>
                     </div>
                   </div>
-                  <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+                  <div class="col-12 col-sm-6 col-md-4">
                     <div class="detail-metric-card">
                       <div class="detail-metric-label">Estimasi Tumbuh</div>
                       <div class="detail-metric-value">{{ selectedHarvestMetrics.estimatedGrownPlants ? `${formatNumber(selectedHarvestMetrics.estimatedGrownPlants, 0)} pohon` : '-' }}</div>
                     </div>
                   </div>
-                  <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+                  <div class="col-12 col-sm-6 col-md-4">
                     <div class="detail-metric-card">
                       <div class="detail-metric-label">Hasil per Pohon Tumbuh</div>
-                      <div class="detail-metric-value">{{ selectedHarvestMetrics.perTreeYield ? `${formatNumber(selectedHarvestMetrics.perTreeYield)} ${selectedHarvest.harvest_unit || 'kg'}/pohon` : '-' }}</div>
+                      <div class="detail-metric-value">{{ selectedHarvestMetrics.perTreeYield ? formatPerTreeYield(selectedHarvestMetrics.perTreeYield) : '-' }}</div>
                     </div>
                   </div>
-                  <div class="col-12 col-sm-6 col-md-4 col-lg-2" v-if="selectedHarvestMetrics.isFreshCorn">
+                  <div class="col-12 col-sm-6 col-md-4" v-if="selectedHarvestMetrics.isFreshCorn">
                     <div class="detail-metric-card">
                       <div class="detail-metric-label">Putren per Pohon</div>
-                      <div class="detail-metric-value">{{ selectedHarvestMetrics.putrenPerTreeYield ? `${formatNumber(selectedHarvestMetrics.putrenPerTreeYield)} ${selectedHarvest.harvest_unit || 'kg'}/pohon` : '-' }}</div>
+                      <div class="detail-metric-value">{{ selectedHarvestMetrics.putrenPerTreeYield ? formatPerTreeYield(selectedHarvestMetrics.putrenPerTreeYield) : '-' }}</div>
                     </div>
                   </div>
-                  <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+                  <div class="col-12 col-sm-6 col-md-4">
                     <div class="detail-metric-card">
                       <div class="detail-metric-label">Total PCS</div>
                       <div class="detail-metric-value">{{ selectedHarvestMetrics.totalPcs ? `${formatNumber(selectedHarvestMetrics.totalPcs, 0)} pcs` : '-' }}</div>
                     </div>
                   </div>
-                  <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+                  <div class="col-12 col-sm-6 col-md-4">
                     <div class="detail-metric-card">
                       <div class="detail-metric-label">Total Kali Panen</div>
                       <div class="detail-metric-value">{{ getHarvestCycleCount(selectedHarvest) }} kali</div>
@@ -2294,13 +2477,14 @@ const isBs = page.props.auth?.user?.role === "bs";
                       <div class="detail-key">Total Biji</div><div class="detail-val">{{ selectedHarvestMetrics?.totalSeedCount ? `${formatNumber(selectedHarvestMetrics.totalSeedCount, 0)} biji` : '-' }}</div>
                       <div class="detail-key">Estimasi Tumbuh</div><div class="detail-val">{{ selectedHarvestMetrics?.estimatedGrownPlants ? `${formatNumber(selectedHarvestMetrics.estimatedGrownPlants, 0)} pohon` : '-' }}</div>
                       <div class="detail-key">Hasil per PCS</div><div class="detail-val">{{ selectedHarvestMetrics?.perPieceYield ? `${formatNumber(selectedHarvestMetrics.perPieceYield)} ${selectedHarvest.harvest_unit || 'kg'}/pcs` : '-' }}</div>
-                      <div class="detail-key">Hasil per Pohon Tumbuh</div><div class="detail-val">{{ selectedHarvestMetrics?.perTreeYield ? `${formatNumber(selectedHarvestMetrics.perTreeYield)} ${selectedHarvest.harvest_unit || 'kg'}/pohon` : '-' }}</div>
+                      <div class="detail-key">Hasil per Pohon Tumbuh</div><div class="detail-val">{{ selectedHarvestMetrics?.perTreeYield ? formatPerTreeYield(selectedHarvestMetrics.perTreeYield) : '-' }}</div>
                       <template v-if="selectedHarvestMetrics?.isFreshCorn">
                         <div class="detail-key">Hasil Putren</div><div class="detail-val">{{ selectedHarvestMetrics?.putrenQty ? `${formatNumber(selectedHarvestMetrics.putrenQty)} ${selectedHarvest.harvest_unit || 'kg'}` : '-' }}</div>
                         <div class="detail-key">Putren per PCS</div><div class="detail-val">{{ selectedHarvestMetrics?.putrenPerPieceYield ? `${formatNumber(selectedHarvestMetrics.putrenPerPieceYield)} ${selectedHarvest.harvest_unit || 'kg'}/pcs` : '-' }}</div>
-                        <div class="detail-key">Putren per Pohon</div><div class="detail-val">{{ selectedHarvestMetrics?.putrenPerTreeYield ? `${formatNumber(selectedHarvestMetrics.putrenPerTreeYield)} ${selectedHarvest.harvest_unit || 'kg'}/pohon` : '-' }}</div>
+                        <div class="detail-key">Putren per Pohon</div><div class="detail-val">{{ selectedHarvestMetrics?.putrenPerTreeYield ? formatPerTreeYield(selectedHarvestMetrics.putrenPerTreeYield) : '-' }}</div>
                       </template>
                       <div class="detail-key">Mode Panen</div><div class="detail-val">{{ selectedHarvest.is_multiple_harvest ? 'Beberapa Kali Panen' : 'Sekali Panen' }}</div>
+                      <div class="detail-key">Status Panen</div><div class="detail-val">{{ selectedHarvest.is_completed ? 'Panen Selesai' : 'Belum Selesai' }}</div>
                       <div class="detail-key">Penginput</div><div class="detail-val">{{ selectedHarvest.created_by?.name || '-' }}</div>
                       <div class="detail-key">Waktu Input</div><div class="detail-val">{{ formatDateTime(selectedHarvest.created_datetime) }}</div>
                     </div>
@@ -2642,6 +2826,14 @@ const isBs = page.props.auth?.user?.role === "bs";
 
 .harvest-modern-tag.cycle {
   background: rgba(13, 102, 64, 0.9);
+}
+
+.harvest-modern-tag.done {
+  background: rgba(46, 125, 50, 0.92);
+}
+
+.harvest-modern-tag.pending {
+  background: rgba(237, 108, 2, 0.92);
 }
 
 .harvest-modern-body {

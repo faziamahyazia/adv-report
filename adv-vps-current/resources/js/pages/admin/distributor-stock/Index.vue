@@ -15,9 +15,12 @@ const title = "Stok Distributor";
 const rows = ref([]);
 const loading = ref(false);
 const adjusting = ref(false);
+const editingMeta = ref(false);
 const deleting = ref(false);
 const adjustmentDialog = ref(false);
 const adjustmentRow = ref(null);
+const metaDialog = ref(false);
+const metaRow = ref(null);
 const showFilter = ref(storage.get("show-filter", true));
 const tableRef = ref(null);
 const filterToolbarRef = ref(null);
@@ -32,6 +35,11 @@ const adjustmentForm = reactive({
   expired_date: null,
   reference: "manual-adjustment",
   notes: "",
+});
+
+const metaForm = reactive({
+  lot_number: "",
+  expired_date: null,
 });
 
 const filter = reactive(
@@ -182,6 +190,13 @@ const openAdjustment = (row, type = "in") => {
   adjustmentDialog.value = true;
 };
 
+const openMetaEdit = (row) => {
+  metaRow.value = row;
+  metaForm.lot_number = row?.lot_number || "";
+  metaForm.expired_date = row?.expired_date || null;
+  metaDialog.value = true;
+};
+
 const normalizeUnit = (unit) => String(unit || "").trim().toLowerCase();
 
 const convertBaseToUnit = (row, baseQty, targetUnit) => {
@@ -300,12 +315,40 @@ const submitAdjustment = async () => {
   }
 };
 
+const submitMetaEdit = async () => {
+  if (!metaRow.value) return;
+
+  editingMeta.value = true;
+  try {
+    const response = await axios.post(route("admin.distributor-stock.update-meta"), {
+      distributor_id: metaRow.value.distributor_id,
+      product_id: metaRow.value.product_id,
+      old_lot_number: metaRow.value.lot_number || null,
+      old_expired_date: metaRow.value.expired_date || null,
+      lot_number: metaForm.lot_number || null,
+      expired_date: metaForm.expired_date || null,
+    });
+
+    $q.notify({ color: "positive", message: response.data?.message || "Metadata lot berhasil diperbarui." });
+    metaDialog.value = false;
+    metaRow.value = null;
+    await fetchItems();
+  } catch (error) {
+    $q.notify({
+      color: "negative",
+      message: error?.response?.data?.message || "Gagal memperbarui metadata lot.",
+    });
+  } finally {
+    editingMeta.value = false;
+  }
+};
+
 const deleteRow = (row) => {
   if (!canDeleteStock.value) return;
 
   $q.dialog({
     title: "Hapus Stok Distributor",
-    message: `Hapus stok untuk lot ${row?.lot_number || "NO-LOT"} (${row?.product?.name || "Produk"})?`,
+    message: `Hapus stok untuk lot ${row?.lot_display || row?.lot_number || "NO-LOT"} (${row?.product?.name || "Produk"})?`,
     cancel: true,
     persistent: true,
     ok: { color: "negative", label: "Hapus" },
@@ -447,7 +490,7 @@ watch(pagination, () => storage.set("pagination", pagination.value), { deep: tru
                 <div class="mobile-stock-meta">
                   <div><span class="label">Produk</span><span class="value">{{ props.row.product?.name || '-' }}</span></div>
                   <div><span class="label">Satuan</span><span class="value">{{ props.row.product?.unit || '-' }}</span></div>
-                  <div><span class="label">No. Lot</span><span class="value">{{ props.row.lot_number || '-' }}</span></div>
+                  <div><span class="label">No. Lot</span><span class="value">{{ props.row.lot_display || props.row.lot_number || '-' }}</span></div>
                   <div><span class="label">Expired</span><span class="value">{{ props.row.expired_date || '-' }}</span></div>
                   <div><span class="label">Aging</span><span class="value">{{ props.row.aging_days ?? '-' }}</span></div>
                 </div>
@@ -456,6 +499,17 @@ watch(pagination, () => storage.set("pagination", pagination.value), { deep: tru
               <q-separator />
 
               <q-card-actions align="around" class="q-pa-sm q-gutter-xs">
+                <q-btn
+                  v-if="$can('admin.distributor-stock.adjust')"
+                  icon="drive_file_rename_outline"
+                  label="Edit Lot"
+                  size="sm"
+                  dense
+                  flat
+                  color="secondary"
+                  :disable="deleting"
+                  @click="openMetaEdit(props.row)"
+                />
                 <q-btn
                   v-if="$can('admin.distributor-stock.adjust')"
                   icon="tune"
@@ -501,7 +555,7 @@ watch(pagination, () => storage.set("pagination", pagination.value), { deep: tru
               <template v-if="$q.screen.lt.md">
                 <div>Produk: {{ props.row.product?.name || '-' }}</div>
                 <div>Satuan: {{ props.row.product?.unit || '-' }}</div>
-                <div>Lot: {{ props.row.lot_number || '-' }}</div>
+                <div>Lot: {{ props.row.lot_display || props.row.lot_number || '-' }}</div>
                 <div>Expired: {{ props.row.expired_date || '-' }}</div>
                 <div>Aging: {{ props.row.aging_days ?? '-' }}</div>
                 <div>Qty: {{ formatNumber(props.row.stock_quantity, 'id-ID', 2) }}</div>
@@ -511,7 +565,7 @@ watch(pagination, () => storage.set("pagination", pagination.value), { deep: tru
 
             <q-td key="product" :props="props">{{ props.row.product?.name || '-' }}</q-td>
             <q-td key="unit" :props="props">{{ props.row.product?.unit || '-' }}</q-td>
-            <q-td key="lot_number" :props="props">{{ props.row.lot_number || '-' }}</q-td>
+            <q-td key="lot_number" :props="props">{{ props.row.lot_display || props.row.lot_number || '-' }}</q-td>
             <q-td key="expired_date" :props="props">{{ props.row.expired_date || '-' }}</q-td>
             <q-td key="aging_days" :props="props" class="text-right">{{ props.row.aging_days ?? '-' }}</q-td>
             <q-td key="stock_quantity" :props="props" class="text-right text-weight-medium">
@@ -522,6 +576,17 @@ watch(pagination, () => storage.set("pagination", pagination.value), { deep: tru
             </q-td>
 
             <q-td key="action" :props="props" class="text-right">
+              <q-btn
+                v-if="$can('admin.distributor-stock.adjust')"
+                icon="drive_file_rename_outline"
+                dense
+                flat
+                color="secondary"
+                :disable="deleting"
+                @click="openMetaEdit(props.row)"
+              >
+                <q-tooltip>Edit No. Lot / Expired</q-tooltip>
+              </q-btn>
               <q-btn
                 v-if="$can('admin.distributor-stock.adjust')"
                 icon="tune"
@@ -639,6 +704,44 @@ watch(pagination, () => storage.set("pagination", pagination.value), { deep: tru
         <q-card-actions align="right">
           <q-btn flat label="Batal" v-close-popup :disable="adjusting" />
           <q-btn color="primary" label="Simpan" :loading="adjusting" @click="submitAdjustment" />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
+    <q-dialog v-model="metaDialog" persistent>
+      <q-card style="min-width: 420px; max-width: 95vw">
+        <q-card-section class="row items-center q-pb-none">
+          <div class="text-h6">Edit No. Lot / Expired</div>
+        </q-card-section>
+
+        <q-card-section>
+          <div class="text-caption text-grey-7 q-mb-sm">
+            {{ metaRow?.distributor?.name || '-' }} - {{ metaRow?.product?.name || '-' }}
+          </div>
+          <div class="text-caption text-grey-8 q-mb-sm">
+            Data saat ini: <b>{{ metaRow?.lot_number || 'NO-LOT' }}</b> / <b>{{ metaRow?.expired_date || '-' }}</b>
+          </div>
+
+          <q-input
+            v-model.trim="metaForm.lot_number"
+            dense
+            outlined
+            label="No. Lot"
+            class="q-mb-sm"
+          />
+
+          <q-input
+            v-model="metaForm.expired_date"
+            type="date"
+            dense
+            outlined
+            label="Tanggal Expired"
+          />
+        </q-card-section>
+
+        <q-card-actions align="right">
+          <q-btn flat label="Batal" v-close-popup :disable="editingMeta" />
+          <q-btn color="secondary" label="Simpan" :loading="editingMeta" @click="submitMetaEdit" />
         </q-card-actions>
       </q-card>
     </q-dialog>

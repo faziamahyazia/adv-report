@@ -364,8 +364,8 @@ watch(showFilter, () => storage.set("show-filter", showFilter.value), {
               <template v-if="!$q.screen.lt.md">
                 <div class="row items-start q-gutter-sm">
                   <q-img
-                    v-if="props.row.image_path"
-                    :src="`/${props.row.image_path}`"
+                    v-if="props.row.display_image_path"
+                    :src="`/${props.row.display_image_path}`"
                     style="width: 64px; height: 64px; border: 1px solid #ddd"
                     spinner-color="grey"
                     fit="cover"
@@ -388,16 +388,16 @@ watch(showFilter, () => storage.set("show-filter", showFilter.value), {
               </template>
               <template v-else>
                 <q-img
-                  v-if="props.row.image_path"
-                  :src="`/${props.row.image_path}`"
+                    v-if="props.row.display_image_path"
+                    :src="`/${props.row.display_image_path}`"
                   style="border: 1px solid #ddd; max-height: 150px"
                   spinner-color="grey"
                   fit="scale-down"
                   class="rounded-borders bg-light-green-2"
                 />
-                <div><q-icon name="person" /> {{ props.row.owner_name }}</div>
+                <div><q-icon class="mobile-demo-icon" name="person" /> {{ props.row.owner_name }}</div>
                 <div v-if="props.row.owner_phone">
-                  <q-icon name="phone" /> {{ props.row.owner_phone }}
+                  <q-icon class="mobile-demo-icon" name="phone" /> {{ props.row.owner_phone }}
                 </div>
                 <div
                   v-if="props.row.field_location"
@@ -407,14 +407,14 @@ watch(showFilter, () => storage.set("show-filter", showFilter.value), {
                     overflow-wrap: break-word;
                   "
                 >
-                  <q-icon name="distance" />
+                  <q-icon class="mobile-demo-icon" name="distance" />
                   {{ props.row.field_location }}
                 </div>
               </template>
 
               <template v-if="$q.screen.lt.md">
                 <div v-if="props.row.product">
-                  <q-icon name="potted_plant" />
+                  <q-icon class="mobile-demo-icon" name="potted_plant" />
                   {{ props.row.product.name }}
                   <template v-if="props.row.population"
                     >({{ formatNumber(props.row.population) }} pohon)</template
@@ -422,13 +422,13 @@ watch(showFilter, () => storage.set("show-filter", showFilter.value), {
                 </div>
                 <template v-if="props.row.active">
                   <div>
-                    <q-icon name="calendar_clock" />
+                    <q-icon class="mobile-demo-icon" name="calendar_clock" />
                     {{ plantAge(props.row.plant_date) }} hari
                   </div>
                 </template>
                 <template v-if="props.row.last_visit">
                   <div>
-                    <q-icon name="calendar_clock" /> Last Visit:
+                    <q-icon class="mobile-demo-icon" name="calendar_clock" /> Last Visit:
                     {{ $dayjs(props.row.last_visit).format("D MMMM YYYY") }} /
                     {{ $dayjs(props.row.last_visit).fromNow() }}
                   </div>
@@ -455,7 +455,7 @@ watch(showFilter, () => storage.set("show-filter", showFilter.value), {
                     overflow-wrap: break-word;
                   "
                 >
-                  <q-icon name="notes" />
+                  <q-icon class="mobile-demo-icon" name="notes" />
                   {{
                     props.row.notes.length > 100
                       ? props.row.notes.slice(0, 100) + "..."

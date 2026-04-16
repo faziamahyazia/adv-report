@@ -43,18 +43,18 @@ const trendOption = computed(() => ({
   grid: { top: 12, right: 8, bottom: 28, left: 32, containLabel: true },
   xAxis: {
     type: "category",
-    axisLabel: { color: "#6b7280", fontSize: 11 },
+    axisLabel: { color: "#4f5965", fontSize: 11 },
     data: (data.trend || []).map((x) => x.label),
   },
   yAxis: {
     type: "value",
-    axisLabel: { color: "#6b7280", fontSize: 11 },
-    splitLine: { lineStyle: { color: "#edf0f5", type: "dashed" } },
+    axisLabel: { color: "#4f5965", fontSize: 11 },
+    splitLine: { lineStyle: { color: "#e8eff8", type: "dashed" } },
   },
   series: [{
     type: "bar",
     barMaxWidth: 28,
-    itemStyle: { color: "#2563eb", borderRadius: [4, 4, 0, 0] },
+    itemStyle: { color: "#0a3b82", borderRadius: [4, 4, 0, 0] },
     data: (data.trend || []).map((x) => x.total),
     name: "Keluhan",
   }],

@@ -220,6 +220,7 @@ onMounted(() => {
       currentPath.startsWith("/admin/distributors") ||
       currentPath.startsWith("/admin/distributor-stocks") ||
       currentPath.startsWith("/admin/distributor-targets") ||
+      currentPath.startsWith("/admin/market-insights") ||
       currentPath.startsWith("/admin/analytics"),
     master:
       currentPath.startsWith("/admin/customers") ||
@@ -637,6 +638,7 @@ onMounted(() => {
               $can('admin.distributor.index') ||
               $can('admin.distributor-stock.index') ||
               $can('admin.distributor-target.index') ||
+              $can('admin.market-insight.index') ||
               $can('admin.analytics.index')
             "
             v-model="menuGroups.sales"
@@ -648,6 +650,7 @@ onMounted(() => {
               $page.url.startsWith('/admin/distributors') ||
               $page.url.startsWith('/admin/distributor-stocks') ||
               $page.url.startsWith('/admin/distributor-targets') ||
+              $page.url.startsWith('/admin/market-insights') ||
               $page.url.startsWith('/admin/analytics')
               ? 'text-primary'
               : ''"
@@ -720,6 +723,20 @@ onMounted(() => {
               </q-item-section>
               <q-item-section>
                 <q-item-label>Target Distributor</q-item-label>
+              </q-item-section>
+            </q-item>
+            <q-item
+              v-if="$can('admin.market-insight.index')"
+              clickable
+              v-ripple
+              :active="$page.url.startsWith('/admin/market-insights')"
+              @click="router.get(route('admin.market-insight.index'))"
+            >
+              <q-item-section avatar>
+                <q-icon name="insights" />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label>Market Insight</q-item-label>
               </q-item-section>
             </q-item>
             <q-item

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\DemoPlot;
+use App\Models\DemoPlotVisit;
 use App\Models\User;
 use App\Models\Product;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -12,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Intervention\Image\ImageManager;
+use Illuminate\Validation\ValidationException;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -50,6 +52,15 @@ class DemoPlotController extends Controller
             'created_by_user:id,username',
             'updated_by_user:id,username',
         ])->findOrFail($id);
+
+        $latestVisitPhoto = DemoPlotVisit::query()
+            ->where('demo_plot_id', $data->id)
+            ->whereNotNull('image_path')
+            ->orderByDesc('visit_date')
+            ->orderByDesc('id')
+            ->value('image_path');
+
+        $data->setAttribute('latest_visit_image_path', $latestVisitPhoto);
 
         $this->authorize('view', $data);
 
@@ -177,6 +188,101 @@ class DemoPlotController extends Controller
 
         return redirect(route('admin.demo-plot.detail', ['id' => $item->id]))
             ->with('success', "DemoPlot #$item->id telah disimpan.");
+    }
+
+    public function updateCoverPhoto(Request $request, $id)
+    {
+        $plot = DemoPlot::with(['user'])->findOrFail($id);
+        $currentUser = Auth::user();
+
+        $canManage = $currentUser->role === User::Role_Admin
+            || ($currentUser->role === User::Role_BS && (int) $plot->user_id === (int) $currentUser->id)
+            || ($currentUser->role === User::Role_Agronomist && (int) ($plot->user?->parent_id ?? 0) === (int) $currentUser->id);
+
+        if (!$canManage) {
+            abort(403, 'Anda tidak memiliki akses untuk mengubah foto depan demo plot ini.');
+        }
+
+        $validated = $request->validate([
+            'source' => 'required|in:upload,visit,reset',
+            'image' => 'nullable|image|max:5120',
+            'visit_id' => 'nullable|integer|exists:demo_plot_visits,id',
+        ]);
+
+        $newPath = null;
+
+        if ($validated['source'] === 'reset') {
+            if ($plot->image_path && file_exists(public_path($plot->image_path))) {
+                @unlink(public_path($plot->image_path));
+            }
+            $plot->image_path = null;
+            $plot->save();
+
+            return response()->json([
+                'message' => 'Foto depan dikembalikan ke default foto kunjungan terakhir.',
+            ]);
+        }
+
+        if ($validated['source'] === 'upload') {
+            if (!$request->hasFile('image')) {
+                throw ValidationException::withMessages([
+                    'image' => 'Foto dari galeri wajib dipilih.',
+                ]);
+            }
+
+            $newPath = store_public_image_upload($request->file('image'), 'uploads', $plot->image_path);
+        } else {
+            if (empty($validated['visit_id'])) {
+                throw ValidationException::withMessages([
+                    'visit_id' => 'Foto kunjungan wajib dipilih.',
+                ]);
+            }
+
+            $visit = DemoPlotVisit::query()
+                ->where('demo_plot_id', $plot->id)
+                ->find((int) $validated['visit_id']);
+
+            if (!$visit) {
+                throw ValidationException::withMessages([
+                    'visit_id' => 'Foto kunjungan yang dipilih tidak ditemukan pada demo plot ini.',
+                ]);
+            }
+
+            if (!$visit->image_path) {
+                throw ValidationException::withMessages([
+                    'visit_id' => 'Foto kunjungan yang dipilih tidak tersedia.',
+                ]);
+            }
+
+            $sourcePath = public_path(normalize_public_image_path($visit->image_path));
+            if (!file_exists($sourcePath)) {
+                throw ValidationException::withMessages([
+                    'visit_id' => 'File foto kunjungan tidak ditemukan.',
+                ]);
+            }
+
+            $directory = 'uploads';
+            $absoluteDirectory = public_path($directory);
+            if (!is_dir($absoluteDirectory)) {
+                mkdir($absoluteDirectory, 0755, true);
+            }
+
+            $newFilename = time() . '_cover_' . basename((string) $visit->image_path);
+            $newPath = $directory . '/' . preg_replace('/[^A-Za-z0-9._-]/', '_', $newFilename);
+            copy($sourcePath, public_path($newPath));
+
+            if ($plot->image_path && file_exists(public_path($plot->image_path))) {
+                @unlink(public_path($plot->image_path));
+            }
+        }
+
+        $plot->image_path = $newPath;
+        $plot->save();
+
+        return response()->json([
+            'message' => 'Foto depan demo plot berhasil diperbarui.',
+            'image_path' => $newPath,
+        ]);
     }
 
     public function delete($id)
@@ -323,6 +429,7 @@ class DemoPlotController extends Controller
                 '=',
                 'demo_plots.id'
             )
+            ->addSelect(DB::raw('COALESCE(demo_plots.image_path, latest_visits.image_path) as display_image_path'))
             ->with([
                 'user:id,username,name',
                 'product:id,name',
