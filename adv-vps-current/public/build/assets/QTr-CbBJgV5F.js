@@ -1,0 +1,1 @@
+import{z as t,E as s}from"./app-C72T-B7o.js";import{c as a,h as n}from"./vendor1-e39yyhVQ.js";const l=t({name:"QTr",props:{props:Object,noHover:Boolean},setup(o,{slots:r}){const e=a(()=>"q-tr"+(o.props===void 0||o.props.header===!0?"":" "+o.props.__trClass)+(o.noHover===!0?" q-tr--no-hover":""));return()=>n("tr",{class:e.value},s(r.default))}});export{l as Q};

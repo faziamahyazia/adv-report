@@ -1,0 +1,1 @@
+import{r as i}from"./vendor1-e39yyhVQ.js";function P(o,l=!1){const s=o.map(e=>({value:e.id,label:e.name})),t=l?[{value:"all",label:"Semua"},...s]:s,r=i([...t]);return{filteredProducts:r,filterProducts:(e,c)=>{const a=e.toLowerCase();c(()=>{r.value=t.filter(u=>u.label.toLowerCase().includes(a))})},products:t}}export{P as u};

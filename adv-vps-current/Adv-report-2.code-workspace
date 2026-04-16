@@ -1,0 +1,42 @@
+{
+  "folders": [
+    {
+      "name": "📁 Adv Report",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "files.exclude": {
+      "**/.git": true,
+      "**/node_modules": true,
+      "**/vendor": true,
+      "bootstrap/cache": true,
+      "public/build": true,
+      "public/hot": true,
+      "public/sw.js": true,
+      "public/workbox-*.js": true,
+      "storage/framework": true,
+      "storage/logs": true,
+      "package-lock.json": true,
+      "composer.lock": true,
+      "phpunit.xml": true,
+      "postcss.config.js": true,
+      "tailwind.config.js": true,
+      "vite.config.js": true,
+      "jsconfig.json": true,
+      "fiscal_year}-M{-": true,
+      "month}-P{-": true
+    },
+    "explorer.fileNesting.enabled": true,
+    "explorer.compactFolders": true,
+    "explorer.fileNesting.patterns": {
+      "composer.json": "composer.lock",
+      "package.json": "package-lock.json, vite.config.js, tailwind.config.js, postcss.config.js, jsconfig.json",
+      ".env": ".env.example",
+      "README.md": "LICENSE, TODO",
+      "artisan": "phpunit.xml",
+      "deploy-safe.sh": "manage-vps.sh, .deploy-rsync-excludes"
+    },
+    "explorer.sortOrder": "type"
+  }
+}
